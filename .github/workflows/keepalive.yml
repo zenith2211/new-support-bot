@@ -1,0 +1,30 @@
+name: keep-alive
+
+# Pings the Render free web service so it doesn't spin down after ~15 min idle.
+# GitHub-hosted runners are free for public repos. Note: scheduled runs are
+# "best effort" (GitHub may delay them under load) and GitHub auto-disables
+# schedules after 60 days with no repo commits.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes (UTC)
+  workflow_dispatch:          # allows manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health (with cold-start retries)
+        run: |
+          URL="https://new-support-bot.onrender.com/health"
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "$URL") || code="000"
+            echo "Attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Service is awake."
+              exit 0
+            fi
+            sleep 25
+          done
+          echo "::error::Health endpoint did not return 200 after retries"
+          exit 1
