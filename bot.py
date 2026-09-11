@@ -1941,7 +1941,7 @@ def kb_main(lang: str = "en"):
         [btn(_t("btn_history",  lang), "history",   emoji_key="menu"),
          btn(_t("btn_referral", lang), "referral",  emoji_key="referral")],
         [btn(_t("btn_channel",  lang), url=FORCE_JOIN_CHANNEL_LINK,  emoji_key="channel"),
-         btn(_t("btn_support",  lang), url="https://t.me/ai_chat_support",     emoji_key="support")],
+         btn(_t("btn_support",  lang), url="https://t.me/John_support",     emoji_key="support")],
         [btn(_t("btn_change_language", lang), "change_language", emoji_key="globe")],
     ])
 
@@ -2500,7 +2500,7 @@ async def auto_deliver(chat_id, user_id, order: dict) -> bool:
         deliver_text, deliver_ent = dm.build()
         await send_msg(chat_id, deliver_text, deliver_ent,
             keyboard=build_keyboard([
-                [btn(_t("btn_dm_admin", lang), url="https://t.me/ai_chat_support",
+                [btn(_t("btn_dm_admin", lang), url="https://t.me/John_support",
                      emoji_key="support", style="success")],
                 [btn(_t("btn_home", lang), "back_main", emoji_key="back")],
             ])
@@ -3495,7 +3495,7 @@ async def handle_message(msg: dict):
             await send_msg(chat_id, et, ee,
                 keyboard=build_keyboard([
                     [btn(_t("btn_try_again", lang), f"bep20_retry_{order_id}", emoji_key="arrow", style="success")],
-                    [btn(_t("btn_contact_support", lang), url="https://t.me/ai_chat_support", emoji_key="support")],
+                    [btn(_t("btn_contact_support", lang), url="https://t.me/John_support", emoji_key="support")],
                     [btn(_t("btn_cancel_order", lang), f"cancel_{order_id}", emoji_key="cross", style="danger")],
                 ])
             )
@@ -3527,7 +3527,7 @@ async def handle_message(msg: dict):
             count  = await stock_get_count(cat_id)
             if count <= 0:
                 await send_msg(chat_id, _t("stock_empty", lang),
-                    keyboard=build_keyboard([[btn(_t("btn_contact_support", lang), url="https://t.me/ai_chat_support", emoji_key="support")]]))
+                    keyboard=build_keyboard([[btn(_t("btn_contact_support", lang), url="https://t.me/John_support", emoji_key="support")]]))
                 return
 
             await order_set_status(order_id, "approved")
@@ -3600,7 +3600,7 @@ async def handle_message(msg: dict):
             await send_msg(chat_id, et, ee,
                 keyboard=build_keyboard([
                     [btn(_t("btn_try_again", lang), f"trx_retry_{order_id}", emoji_key="arrow", style="success")],
-                    [btn(_t("btn_contact_support", lang), url="https://t.me/ai_chat_support", emoji_key="support")],
+                    [btn(_t("btn_contact_support", lang), url="https://t.me/John_support", emoji_key="support")],
                     [btn(_t("btn_cancel_order", lang), f"cancel_{order_id}", emoji_key="cross", style="danger")],
                 ])
             )
@@ -3631,7 +3631,7 @@ async def handle_message(msg: dict):
             count  = await stock_get_count(cat_id)
             if count <= 0:
                 await send_msg(chat_id, _t("stock_empty", lang),
-                    keyboard=build_keyboard([[btn(_t("btn_contact_support", lang), url="https://t.me/ai_chat_support", emoji_key="support")]]))
+                    keyboard=build_keyboard([[btn(_t("btn_contact_support", lang), url="https://t.me/John_support", emoji_key="support")]]))
                 return
 
             await order_set_status(order_id, "approved")
