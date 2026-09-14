@@ -129,3 +129,28 @@ def listing(lang: str = "en", include_admin: bool = False) -> list:
 
 def all_langs() -> list:
     return list(LANGS.keys())
+
+
+# Admins who already have the admin-scoped menu registered this run.
+_admin_menu_done: set = set()
+
+
+async def ensure_admin_menu(user_id, tg_module) -> bool:
+    """Register the admin command menu for one admin, once.
+
+    A chat-scoped setMyCommands fails with "chat not found" until that admin
+    has opened the bot, so this is called again on their first interaction
+    rather than only at startup.
+    """
+    key = str(user_id)
+    if key in _admin_menu_done:
+        return False
+    data = await tg_module.set_my_commands(
+        admin_commands("en"),
+        scope={"type": "chat", "chat_id": user_id},
+        quiet=True,
+    )
+    if data.get("ok"):
+        _admin_menu_done.add(key)
+        return True
+    return False

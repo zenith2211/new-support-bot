@@ -44,7 +44,7 @@ def fail(step: str, detail: str):
 
 # ─── FAKE BOT API ─────────────────────────────────────────────
 async def fake_api(method: str, payload: dict | None = None,
-                   files: dict | None = None) -> dict:
+                   files: dict | None = None, quiet: bool = False) -> dict:
     global _message_id
     payload = payload or {}
     CALLS.append((method, payload))

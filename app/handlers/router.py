@@ -9,7 +9,7 @@ screen.
 
 import logging
 
-from .. import config, screens, state, store, tg, util
+from .. import commands, config, screens, state, store, tg, util
 from ..lang import t
 from .base import Ctx, ctx_from_callback, ctx_from_message, error, send_new, \
     toast
@@ -73,6 +73,9 @@ async def on_message(message: dict):
     ctx = ctx_from_message(message)
     if await _blocked(ctx):
         return
+
+    if ctx.is_admin:
+        await commands.ensure_admin_menu(ctx.user_id, tg)
 
     text = (message.get("text") or message.get("caption") or "").strip()
 

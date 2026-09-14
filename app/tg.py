@@ -46,11 +46,13 @@ async def close_session():
 
 # ─── RAW CALL ─────────────────────────────────────────────────
 async def api(method: str, payload: dict | None = None,
-              files: dict | None = None) -> dict:
+              files: dict | None = None, quiet: bool = False) -> dict:
     """Call a Bot API method. Returns the full response envelope.
 
     Retries once on 429 using Telegram's retry_after, and on transient
-    network errors, so a hiccup never kills the polling loop.
+    network errors, so a hiccup never kills the polling loop. `quiet`
+    suppresses the failure log for calls whose failure is expected and
+    handled by the caller.
     """
     url = f"{config.API}/{method}"
     payload = {k: v for k, v in (payload or {}).items() if v is not None}
@@ -94,7 +96,7 @@ async def api(method: str, payload: dict | None = None,
             continue
 
         # "message is not modified" is normal when a refresh changes nothing.
-        if "not modified" not in desc:
+        if not quiet and "not modified" not in desc:
             logger.warning("%s failed: %s", method, desc)
         return data
 
@@ -379,8 +381,9 @@ async def is_member(chat_id: int, user_id) -> bool:
     return status in ("creator", "administrator", "member", "restricted")
 
 
-async def set_my_commands(commands: list, scope: dict | None = None) -> dict:
+async def set_my_commands(commands: list, scope: dict | None = None,
+                          quiet: bool = False) -> dict:
     return await api("setMyCommands", {
         "commands": commands,
         "scope": scope,
-    })
+    }, quiet=quiet)

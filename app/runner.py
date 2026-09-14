@@ -157,11 +157,12 @@ async def publish_commands():
             "commands": commands.public_commands(code),
             "language_code": code,
         })
+    # Chat-scoped menus only work for admins who have opened the bot; the
+    # rest get theirs on first contact (see commands.ensure_admin_menu).
     for admin_id in config.ADMINS:
-        await tg.set_my_commands(
-            commands.admin_commands("en"),
-            scope={"type": "chat", "chat_id": admin_id},
-        )
+        if not await commands.ensure_admin_menu(admin_id, tg):
+            logger.info("admin menu for %s deferred until they open the bot",
+                        admin_id)
 
 
 async def announce_start():
