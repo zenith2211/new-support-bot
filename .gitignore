@@ -4,4 +4,7 @@ __pycache__/
 .env
 .venv/
 venv/
-used_txns.json
+
+# Runtime state — users, orders, catalog, codes. Never commit it.
+data/
+*.json.tmp
