@@ -20,6 +20,17 @@ def u16(s: str) -> int:
     return len(s.encode("utf-16-le")) // 2
 
 
+def u16_slice(s: str, offset: int, length: int) -> str:
+    """The substring Telegram means by (offset, length).
+
+    Entity offsets are UTF-16 code units, so slicing the python string
+    directly lands in the wrong place as soon as any emoji precedes it.
+    """
+    raw = s.encode("utf-16-le")
+    chunk = raw[offset * 2:(offset + length) * 2]
+    return chunk.decode("utf-16-le", errors="ignore")
+
+
 class Msg:
     def __init__(self):
         self._parts: list = []   # (kind, content, extra)

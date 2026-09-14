@@ -115,6 +115,66 @@ async def history(ctx: Ctx):
     await show(ctx, screens.wallet_history(ctx.user_id, ctx.lang))
 
 
+# ─── WALLET TRANSFER ──────────────────────────────────────────
+async def transfer_prompt(ctx: Ctx):
+    state.set_prompt(ctx.user_id, "transfer")
+    await toast(ctx)
+    m_view = screens.simple(
+        "plus", ctx.s("transfer_title"),
+        f"{ctx.s('wallet_balance')}: {util.fmt_money(ctx.balance)}\n"
+        f"{ctx.s('wallet_customer_id')}: "
+        f"{store.customer_id(ctx.user_id)}\n\n"
+        f"{ctx.s('transfer_prompt')}",
+        ctx.lang,
+        kb([btn(ctx.s("btn_no_cancel"), "nav:wallet", emoji_name="no")]),
+    )
+    await show(ctx, m_view)
+
+
+async def on_transfer_text(ctx: Ctx, text: str):
+    parts = str(text).split()
+    if len(parts) < 2:
+        await error(ctx, "transfer_bad_format", alert=False)
+        return
+    amount = util.parse_amount(parts[-1])
+    code = " ".join(parts[:-1])
+    if amount is None or amount <= 0:
+        await error(ctx, "transfer_bad_format", alert=False)
+        return
+
+    target = store.find_by_customer_id(code)
+    if not target:
+        await error(ctx, "transfer_no_user", alert=False)
+        return
+
+    ok, err = store.transfer(ctx.user_id, target["id"], amount)
+    if not ok:
+        await error(ctx, err or "err_generic", alert=False)
+        return
+
+    state.clear_prompt(ctx.user_id)
+    sender_name = store.customer_id(ctx.user_id)
+    await send_new(ctx, screens.simple(
+        "party", ctx.s("transfer_title"),
+        ctx.s("transfer_ok",
+              amount=util.fmt_money(amount),
+              who=store.customer_id(target["id"]),
+              balance=util.fmt_money(ctx.balance)),
+        ctx.lang,
+        kb([btn(ctx.s("btn_wallet"), "nav:wallet", emoji_name="wallet")]),
+    ))
+
+    their_lang = store.user_lang(target["id"])
+    await broadcast.dm(
+        target["id"],
+        lambda m: m.header("party", t("wallet_title", their_lang)).text(
+            t("transfer_got", their_lang,
+              amount=util.fmt_money(amount),
+              who=sender_name,
+              balance=util.fmt_money(store.balance_of(target["id"])))),
+    )
+
+
 # ─── ORDERS ───────────────────────────────────────────────────
 async def orders(ctx: Ctx):
     await show(ctx, screens.orders(ctx.user_id, ctx.lang))

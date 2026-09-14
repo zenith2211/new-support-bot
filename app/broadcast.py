@@ -155,6 +155,93 @@ async def restocked(product: dict, added: int):
     await _post(text, entities, keyboard, poster)
 
 
+# ─── STOCK ALERT (restock, with volume tiers) ─────────────────
+def build_stock_alert(product: dict, added: int, total: int,
+                      lang: str = "en") -> tuple[str, list]:
+    m = Msg()
+    m.emoji("bell").space().bold(t("bc_stock_title", lang)).nl(2)
+    m.emoji("clipboard").space().bold(f"{t('bc_order_product', lang)}: ")
+    m.bold(product.get("name") or "—").nl()
+    m.text(f"{t('bc_gone_price', lang)}: ")
+    m.bold(util.fmt_money_short(product.get("price"))).nl()
+
+    tiers = store.bulk_tiers(product)
+    if tiers:
+        base = float(product.get("price") or 0.0)
+        m.bold(f"{t('pd_bulk', lang)}:").nl()
+        for tier in tiers:
+            per_unit = max(round(base - tier["off"], 6), 0.0)
+            m.text(f"x{tier['qty']}+ · "
+                   f"{util.fmt_money_short(tier['off'])} "
+                   f"{t('pd_bulk_off', lang)} · ")
+            m.bold(f"{util.fmt_money_short(per_unit)}/unit").nl()
+
+    m.text(f"{t('bc_stock_added', lang)}: ").bold(f"+{added}").nl()
+    m.text(f"{t('bc_stock_total', lang)}: ").bold(total).nl(2)
+    m.text(t("bc_stock_tap", lang))
+    return m.build()
+
+
+async def stock_alert(product: dict, added: int, total: int):
+    lang = "en"
+    text, entities = build_stock_alert(product, added, total, lang)
+    link = await _deep_link(f"p_{product.get('id')}")
+    keyboard = kb(
+        [btn(t("btn_buy_now", lang), url=link, emoji_name="products",
+             style="primary")] if link else None,
+        [btn(t("btn_stop_alerts", lang), f"pa:{product.get('id')}",
+             emoji_name="bell", style="danger")],
+    )
+    poster = product.get("image") or config.POSTER_NEW_ORDER
+    await _post(text, entities, keyboard, poster)
+
+
+# ─── PRICE UPDATE ─────────────────────────────────────────────
+def build_price_update(product: dict, old_price: float,
+                       lang: str = "en") -> tuple[str, list]:
+    m = Msg()
+    m.emoji("fire").space().bold(t("bc_price_title", lang)).nl(2)
+    m.emoji("clipboard").space().bold(f"{t('bc_order_product', lang)}: ")
+    m.bold(product.get("name") or "—").nl()
+    m.emoji("low").space().bold(f"{t('bc_price_old', lang)}: ")
+    m.strike(util.fmt_money_short(old_price)).nl()
+    m.emoji("money").space().bold(f"{t('bc_price_new', lang)}: ")
+    m.bold(util.fmt_money_short(product.get("price"))).nl(2)
+    m.emoji("spark").space().italic(t("bc_price_tap", lang))
+    return m.build()
+
+
+async def price_update(product: dict, old_price: float):
+    """Public post plus a DM to everyone still subscribed to this product."""
+    lang = "en"
+    text, entities = build_price_update(product, old_price, lang)
+    pid = product.get("id")
+    link = await _deep_link(f"p_{pid}")
+    keyboard = kb([btn(t("btn_buy_now", lang), url=link,
+                       emoji_name="products",
+                       style="primary")]) if link else None
+    poster = product.get("image") or config.POSTER_NEW_ORDER
+    await _post(text, entities, keyboard, poster)
+
+    sent = 0
+    for user_id in store.alert_audience(pid):
+        user_lang = store.user_lang(user_id)
+        dm_text, dm_entities = build_price_update(product, old_price,
+                                                  user_lang)
+        dm_keyboard = kb(
+            [btn(t("btn_buy_now", user_lang), f"p:{pid}",
+                 emoji_name="products", style="success")],
+            [btn(t("btn_stop_alerts", user_lang), f"pa:{pid}",
+                 emoji_name="bell")],
+        )
+        data = await tg.send_message(user_id, dm_text, dm_entities,
+                                     dm_keyboard)
+        if data.get("ok"):
+            sent += 1
+        await asyncio.sleep(FANOUT_DELAY)
+    logger.info("price update DM'd to %d user(s)", sent)
+
+
 async def alert_restock_subscribers(product: dict, added: int):
     """DM everyone who did not press Stop Alerts for this product."""
     pid = product.get("id")

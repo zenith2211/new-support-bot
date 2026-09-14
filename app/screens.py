@@ -11,7 +11,6 @@ from .lang import LANGS, lang_flag, lang_name, t
 from .msg import Msg
 from .view import View, btn, kb, reply_kb
 
-QTY_BUTTON_LIMIT = 5
 TOPUP_PRESETS = (1, 3, 5, 10, 25, 50)
 
 
@@ -46,17 +45,8 @@ def reply_labels(lang: str) -> dict:
     return routes
 
 
-def back_row(lang: str, data: str = "nav:home") -> list:
-    return [btn(t("btn_back", lang), data, emoji_name="back")]
-
-
 def home_row(lang: str) -> list:
     return [btn(t("btn_home", lang), "nav:home", emoji_name="home")]
-
-
-def _product_label(product: dict, limit: int = 40) -> str:
-    return f"{emo.char(product.get('emoji') or 'box')} " \
-           f"{util.clip(product.get('name') or '—', limit)}"
 
 
 def _delivery_words(product: dict, lang: str) -> str:
@@ -172,12 +162,22 @@ def category(cat: dict, lang: str) -> View:
             m.text(t("in_stock", lang, n=count))
         else:
             m.text(t("out_of_stock", lang))
+        bulk = store.bulk_label(product)
+        if bulk:
+            m.text(" · ").emoji("chart").space().text(bulk)
         m.nl(2)
 
-    rows = [[btn(util.clip(product.get("name") or "—", 38),
-                 f"p:{product['id']}",
-                 emoji_name=product.get("emoji") or "box")]
-            for product in items]
+    rows = []
+    for product in items:
+        pid = product["id"]
+        bits = [util.clip(product.get("name") or "—", 30),
+                util.fmt_money(product.get("price")),
+                store.stock_display(pid)]
+        bulk = store.bulk_label(product)
+        if bulk:
+            bits.append(bulk)
+        rows.append([btn(" · ".join(bits), f"p:{pid}",
+                         emoji_name=product.get("emoji") or "box")])
     rows.append([btn(t("btn_catalog", lang), "nav:products",
                      emoji_name="catalog")])
     return View.of(m, kb(*rows), poster=config.BANNER_PRODUCTS)
@@ -214,9 +214,23 @@ def product(product_rec: dict, lang: str, balance: float,
         m.kvline("ok", t("pd_warranty", lang), product_rec["warranty"],
                  bold_value=False)
 
+    tiers = store.bulk_tiers(product_rec)
+    if tiers:
+        m.emoji("chart").space().bold(f"{t('pd_bulk', lang)}:").nl()
+        for tier in tiers:
+            per_unit = max(round(price - tier["off"], 6), 0.0)
+            m.text(f"  x{tier['qty']}+ · {util.fmt_money(tier['off'])} "
+                   f"{t('pd_bulk_off', lang)} · ")
+            m.bold(util.fmt_money(per_unit)).nl()
+
+    unit_now, tier_now = store.unit_price_for(product_rec, qty)
     m.emoji("products").space()
     m.bold(t("pd_qty_line", lang, min=min_qty, max=max_qty, qty=qty,
-             total=util.fmt_money(total)))
+             total=util.fmt_money(unit_now * qty)))
+    if tier_now:
+        m.nl().emoji("party").space()
+        m.italic(t("pd_bulk_active", lang,
+                   saved=util.fmt_money((price - unit_now) * qty)))
 
     if coupon:
         _record, _err, discount = store.coupon_check(
@@ -234,22 +248,27 @@ def product(product_rec: dict, lang: str, balance: float,
     rows = []
     sellable = count > 0 or store.stock_is_unlimited(pid)
     if sellable:
-        quick = []
-        step = min_qty
-        while step <= max_qty and len(quick) < QTY_BUTTON_LIMIT:
-            quick.append(btn(f"x{step}", f"buy:{pid}:{step}",
-                             emoji_name="products"))
-            step += 1
-        rows.append(quick)
-        rows.append([btn(t("btn_custom", lang), f"pq:{pid}",
-                         emoji_name="star")])
+        presets = store.qty_presets(product_rec, count)
+        quick = [
+            btn(f"x{value}", f"buy:{pid}:{value}",
+                style="primary" if value == qty else None)
+            for value in presets
+        ]
+        # Three per row, with Custom filling the last slot.
+        for index in range(0, len(quick), 3):
+            rows.append(quick[index:index + 3])
+        custom = btn(t("btn_custom", lang), f"pq:{pid}", emoji_name="star")
+        if rows and len(rows[-1]) < 3:
+            rows[-1].append(custom)
+        else:
+            rows.append([custom])
 
     if coupon:
         rows.append([btn(t("btn_remove_coupon", lang), f"pcx:{pid}",
                          emoji_name="close")])
     else:
         rows.append([btn(t("btn_apply_coupon", lang), f"pc:{pid}",
-                         emoji_name="coupon")])
+                         emoji_name="coupon", style="primary")])
 
     rows.append([
         btn(t("btn_stop_alerts" if alerts_on else "btn_get_alerts", lang),
@@ -283,14 +302,7 @@ def delivery_note(product_rec: dict, lang: str) -> View:
 def confirm(product_rec: dict, lang: str, qty: int, balance: float,
             coupon: dict | None = None) -> View:
     pid = product_rec["id"]
-    price = float(product_rec.get("price") or 0.0)
-    subtotal = price * qty
-    discount = 0.0
-    if coupon:
-        _record, _err, discount = store.coupon_check(
-            coupon.get("code", ""), pid, subtotal
-        )
-    total = round(subtotal - discount, 6)
+    priced = store.quote(pid, qty, (coupon or {}).get("code", ""))
 
     m = Msg()
     m.header("clipboard", t("confirm_title", lang))
@@ -298,11 +310,16 @@ def confirm(product_rec: dict, lang: str, qty: int, balance: float,
     m.bold(product_rec.get("name") or "—").nl(2)
 
     m.kvline("qty", t("confirm_qty", lang), qty)
-    m.kvline("money", t("pd_unit_price", lang), util.fmt_money(price))
-    if discount:
+    m.kvline("money", t("pd_unit_price", lang),
+             util.fmt_money(priced["price"]))
+    if priced["bulk_saved"] > 0:
+        m.kvline("chart", t("pd_bulk", lang),
+                 f"-{util.fmt_money(priced['bulk_saved'])}")
+    if priced["discount"]:
         m.kvline("coupon", t("confirm_discount", lang),
-                 f"-{util.fmt_money(discount)}")
-    m.kvline("money", t("confirm_total", lang), util.fmt_money(total))
+                 f"-{util.fmt_money(priced['discount'])}")
+    m.kvline("money", t("confirm_total", lang),
+             util.fmt_money(priced["total"]))
     m.kvline("card", t("pd_wallet", lang), util.fmt_money(balance))
 
     description = (product_rec.get("description") or "").strip()
@@ -457,28 +474,45 @@ def delivered(order: dict, lang: str, balance: float) -> View:
 
 # ─── WALLET ───────────────────────────────────────────────────
 def wallet(user_rec: dict, lang: str) -> View:
+    user_id = user_rec.get("id")
     m = Msg()
     m.header("wallet", t("wallet_title", lang))
     m.kvline("money", t("wallet_balance", lang),
              util.fmt_money(user_rec.get("balance")))
+    m.emoji("id").space().bold(f"{t('wallet_customer_id', lang)}: ")
+    m.code(store.customer_id(user_id) or "—").nl()
     m.kvline("coin", t("wallet_topped_up", lang),
              util.fmt_money(user_rec.get("topped_up")))
     m.kvline("chart", t("wallet_spent", lang),
              util.fmt_money(user_rec.get("spent")))
-    m.kvline("orders", t("profile_orders", lang),
-             int(user_rec.get("orders") or 0))
     m.nl()
-    m.kvline("bank", t("invoice_method", lang), payments.methods_summary(),
-             bold_value=False)
-    m.nl()
-    m.text(t("wallet_intro", lang)).nl()
-    m.italic(t("wallet_min", lang, min=util.fmt_money(store.min_topup())))
+    m.emoji("rocket").space().text(t("wallet_hint_topup", lang)).nl()
+    m.emoji("plus").space().text(t("wallet_hint_transfer", lang)).nl()
+    m.emoji("ok").space().text(f"{t('wallet_accepted', lang)}: "
+                               f"{payments.methods_summary()}").nl(2)
+
+    recent = store.topups_of(user_id, limit=3)
+    m.emoji("orders").space().bold(t("wallet_recent", lang)).nl()
+    if not recent:
+        m.text(f"• {t('wallet_history_empty', lang)}").nl()
+    else:
+        for record in recent:
+            icon = {"paid": "ok", "pending": "clock"}.get(
+                record.get("status") or "pending", "no")
+            m.text("• ").emoji(icon).space()
+            m.text(f"{util.fmt_money(record.get('amount'))} · "
+                   f"{payments.label(record.get('method'))} · "
+                   f"{util.ago(record.get('created'))}").nl()
 
     return View.of(m, kb(
-        [btn(t("btn_topup", lang), "w:top", emoji_name="plus", style="success")],
+        [btn(t("btn_topup", lang), "w:top", emoji_name="card",
+             style="success"),
+         btn(t("btn_transfer", lang), "w:tr", emoji_name="plus",
+             style="primary")],
         [btn(t("btn_gift", lang), "nav:gift", emoji_name="gift"),
          btn(t("btn_history", lang), "w:hist", emoji_name="orders")],
-        home_row(lang),
+        [btn(t("btn_home", lang), "nav:home", emoji_name="back",
+             style="primary")],
     ), poster=config.BANNER_WALLET)
 
 

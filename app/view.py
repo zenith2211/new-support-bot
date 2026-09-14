@@ -12,11 +12,20 @@ from dataclasses import dataclass, field
 from . import config, emoji as emo
 from .msg import Msg
 
-# Non-standard button fields (icon_custom_emoji_id / style) are only sent when
-# explicitly enabled, because an API that rejects them would break every
-# keyboard in the bot.
+# Button colours. Verified on Telegram Desktop 7.1.4 against a live bot:
+# "style" is honoured ("success" renders green, "danger" red, "primary" teal)
+# while a "color" field is silently ignored. Unknown reply_markup fields are
+# dropped rather than rejected, so this is safe on older clients too — they
+# just show the default colour.
+SEND_BUTTON_STYLES = config._env_bool("BUTTON_STYLES", True)
+
+# icon_custom_emoji_id is NOT verified — left off by default. With it off, a
+# button's emoji comes from its label text, which works everywhere.
 SEND_BUTTON_ICONS = config._env_bool("BUTTON_ICONS", False)
-SEND_BUTTON_STYLES = config._env_bool("BUTTON_STYLES", False)
+
+STYLE_PRIMARY = "primary"
+STYLE_SUCCESS = "success"
+STYLE_DANGER = "danger"
 
 
 @dataclass

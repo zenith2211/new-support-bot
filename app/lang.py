@@ -253,6 +253,130 @@ STRINGS = {
         "vi": "Đã hết hàng. Thông báo đang bật nên bạn sẽ biết tin về hàng mới.",
     },
 
+    # ─── BULK / VOLUME PRICING ────────────────────────────────
+    "pd_bulk": {
+        "en": "Bulk rate", "bn": "বাল্ক রেট", "hi": "बल्क रेट",
+        "ru": "Оптовая цена", "zh": "批量价", "vi": "Giá sỉ",
+    },
+    "pd_bulk_off": {
+        "en": "off", "bn": "ছাড়", "hi": "छूट",
+        "ru": "скидка", "zh": "优惠", "vi": "giảm",
+    },
+    "pd_bulk_active": {
+        "en": "Bulk rate applied — you save {saved}.",
+        "bn": "বাল্ক রেট প্রয়োগ হয়েছে — সাশ্রয় {saved}।",
+        "hi": "बल्क रेट लागू — बचत {saved}।",
+        "ru": "Оптовая цена применена — экономия {saved}.",
+        "zh": "已应用批量价 — 省 {saved}。",
+        "vi": "Đã áp giá sỉ — tiết kiệm {saved}.",
+    },
+
+    # ─── WALLET EXTRAS ────────────────────────────────────────
+    "wallet_customer_id": {
+        "en": "Customer ID", "bn": "কাস্টমার আইডি", "hi": "कस्टमर आईडी",
+        "ru": "ID клиента", "zh": "客户 ID", "vi": "ID khách hàng",
+    },
+    "wallet_hint_topup": {
+        "en": "Tap Top up to add balance.",
+        "bn": "ব্যালেন্স যোগ করতে Top up চাপুন।",
+        "hi": "बैलेंस जोड़ने के लिए Top up दबाएँ।",
+        "ru": "Нажмите «Пополнить», чтобы добавить баланс.",
+        "zh": "点击充值以增加余额。",
+        "vi": "Bấm Nạp tiền để thêm số dư.",
+    },
+    "wallet_hint_transfer": {
+        "en": "Tap Transfer to send balance to another user by Customer ID.",
+        "bn": "কাস্টমার আইডি দিয়ে অন্য ইউজারকে ব্যালেন্স পাঠাতে Transfer চাপুন।",
+        "hi": "कस्टमर आईडी से दूसरे यूज़र को बैलेंस भेजने के लिए Transfer दबाएँ।",
+        "ru": "Нажмите «Перевод», чтобы отправить баланс по ID клиента.",
+        "zh": "点击转账，按客户 ID 向其他用户转余额。",
+        "vi": "Bấm Chuyển để gửi số dư cho người khác qua ID khách hàng.",
+    },
+    "wallet_accepted": {
+        "en": "Accepted", "bn": "গৃহীত", "hi": "स्वीकृत",
+        "ru": "Принимаем", "zh": "支持", "vi": "Chấp nhận",
+    },
+    "wallet_recent": {
+        "en": "Recent activity", "bn": "সাম্প্রতিক লেনদেন",
+        "hi": "हाल की गतिविधि", "ru": "Последние операции",
+        "zh": "最近活动", "vi": "Hoạt động gần đây",
+    },
+    "btn_transfer": {
+        "en": "Transfer", "bn": "ট্রান্সফার", "hi": "ट्रांसफर",
+        "ru": "Перевод", "zh": "转账", "vi": "Chuyển",
+    },
+    "transfer_title": {
+        "en": "Transfer balance", "bn": "ব্যালেন্স ট্রান্সফার",
+        "hi": "बैलेंस ट्रांसफर", "ru": "Перевод баланса",
+        "zh": "转账余额", "vi": "Chuyển số dư",
+    },
+    "transfer_prompt": {
+        "en": "Send: Customer ID and amount.\n\nExample:\n#CX-201566 5",
+        "bn": "পাঠান: কাস্টমার আইডি ও পরিমাণ।\n\nউদাহরণ:\n#CX-201566 5",
+        "hi": "भेजें: कस्टमर आईडी और राशि।\n\nउदाहरण:\n#CX-201566 5",
+        "ru": "Отправьте: ID клиента и сумму.\n\nПример:\n#CX-201566 5",
+        "zh": "发送：客户 ID 和金额。\n\n例如：\n#CX-201566 5",
+        "vi": "Gửi: ID khách hàng và số tiền.\n\nVí dụ:\n#CX-201566 5",
+    },
+    "transfer_ok": {
+        "en": "Sent {amount} to {who}. Your balance is now {balance}.",
+        "bn": "{who} কে {amount} পাঠানো হয়েছে। আপনার ব্যালেন্স এখন {balance}।",
+        "hi": "{who} को {amount} भेजा गया। आपका बैलेंस अब {balance} है।",
+        "ru": "Отправлено {amount} пользователю {who}. Ваш баланс: {balance}.",
+        "zh": "已向 {who} 转账 {amount}。你的余额为 {balance}。",
+        "vi": "Đã gửi {amount} cho {who}. Số dư của bạn là {balance}.",
+    },
+    "transfer_got": {
+        "en": "{amount} arrived from {who}. Your balance is now {balance}.",
+        "bn": "{who} থেকে {amount} এসেছে। আপনার ব্যালেন্স এখন {balance}।",
+        "hi": "{who} से {amount} आया। आपका बैलेंस अब {balance} है।",
+        "ru": "Получено {amount} от {who}. Ваш баланс: {balance}.",
+        "zh": "收到来自 {who} 的 {amount}。你的余额为 {balance}。",
+        "vi": "Đã nhận {amount} từ {who}. Số dư của bạn là {balance}.",
+    },
+    "transfer_no_user": {
+        "en": "No user has that Customer ID.",
+        "bn": "এই কাস্টমার আইডি কারো নেই।",
+        "hi": "इस कस्टमर आईडी वाला कोई यूज़र नहीं है।",
+        "ru": "Пользователя с таким ID клиента нет.",
+        "zh": "没有用户使用该客户 ID。",
+        "vi": "Không có ai dùng ID khách hàng đó.",
+    },
+    "transfer_self": {
+        "en": "That is your own Customer ID.",
+        "bn": "এটি আপনার নিজের কাস্টমার আইডি।",
+        "hi": "यह आपकी ही कस्टमर आईडी है।",
+        "ru": "Это ваш собственный ID клиента.",
+        "zh": "那是你自己的客户 ID。",
+        "vi": "Đó là ID khách hàng của chính bạn.",
+    },
+    "transfer_short": {
+        "en": "Not enough balance for that transfer.",
+        "bn": "এই ট্রান্সফারের জন্য পর্যাপ্ত ব্যালেন্স নেই।",
+        "hi": "इस ट्रांसफर के लिए बैलेंस पर्याप्त नहीं है।",
+        "ru": "Недостаточно баланса для перевода.",
+        "zh": "余额不足，无法转账。",
+        "vi": "Số dư không đủ để chuyển.",
+    },
+    "transfer_bad_format": {
+        "en": "Send a Customer ID and an amount, like: #CX-201566 5",
+        "bn": "কাস্টমার আইডি ও পরিমাণ পাঠান, যেমন: #CX-201566 5",
+        "hi": "कस्टमर आईडी और राशि भेजें, जैसे: #CX-201566 5",
+        "ru": "Отправьте ID клиента и сумму, например: #CX-201566 5",
+        "zh": "请发送客户 ID 和金额，例如：#CX-201566 5",
+        "vi": "Gửi ID khách hàng và số tiền, ví dụ: #CX-201566 5",
+    },
+
+    # ─── PRICE / STOCK ALERTS ─────────────────────────────────
+    "bc_price_title": "Price update",
+    "bc_price_old": "Old price",
+    "bc_price_new": "New price",
+    "bc_price_tap": "Tap below to buy now.",
+    "bc_stock_title": "Stock Alert!",
+    "bc_stock_added": "New stock added",
+    "bc_stock_total": "Total available",
+    "bc_stock_tap": "Tap below to buy now, or stop/turn on future alerts.",
+
     # ─── CONFIRM ──────────────────────────────────────────────
     "confirm_title": {
         "en": "Confirm order", "bn": "অর্ডার নিশ্চিত করুন",

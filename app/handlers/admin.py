@@ -12,7 +12,7 @@ import logging
 
 from .. import broadcast, config, emoji as emo, payments, screens, store, tg, util
 from ..lang import t
-from ..msg import Msg
+from ..msg import Msg, u16_slice
 from ..view import View, btn, kb
 from .base import Ctx, send_new, show, toast
 from . import pay_flow
@@ -24,6 +24,23 @@ BROADCAST_DELAY = 0.06
 
 def _guard(ctx: Ctx) -> bool:
     return ctx.is_admin
+
+
+def _parse_bulk(raw: str) -> list:
+    """'5 | 0.15' per line -> [{"qty": 5, "off": 0.15}]"""
+    if raw.strip() == "-":
+        return []
+    tiers = []
+    for line in raw.splitlines():
+        chunks = [c.strip() for c in line.replace("|", " ").split()]
+        if len(chunks) < 2:
+            continue
+        qty = util.parse_qty(chunks[0])
+        off = util.parse_amount(chunks[1])
+        if qty and qty > 1 and off and off > 0:
+            tiers.append({"qty": qty, "off": off})
+    tiers.sort(key=lambda entry: entry["qty"])
+    return tiers
 
 
 def _panel_view() -> View:
@@ -184,6 +201,11 @@ async def product_open(ctx: Ctx, pid: str):
     m.kvline("qty", "Qty range",
              f"{product.get('min_qty')}–{product.get('max_qty')}",
              bold_value=False)
+    tiers = store.bulk_tiers(product)
+    m.kvline("chart", "Bulk rates",
+             ", ".join(f"x{tier['qty']}+ −{util.fmt_amount(tier['off'])}"
+                       for tier in tiers) if tiers else "none",
+             bold_value=False)
     m.kvline("ok", "Visible", "yes" if product.get("enabled", True) else "no",
              bold_value=False)
     if product.get("image"):
@@ -204,7 +226,9 @@ async def product_open(ctx: Ctx, pid: str):
         [btn("Poster", f"ad:prod:f:image:{pid}", emoji_name="link"),
          btn("Emoji", f"ad:prod:f:emoji:{pid}", emoji_name="star")],
         [btn("Qty range", f"ad:prod:f:qty:{pid}", emoji_name="qty"),
-         btn("Stock mode", f"ad:prod:f:stock_mode:{pid}", emoji_name="stock")],
+         btn("Bulk rates", f"ad:prod:f:bulk:{pid}", emoji_name="chart")],
+        [btn("Stock mode", f"ad:prod:f:stock_mode:{pid}",
+             emoji_name="stock")],
         [btn("Hide" if product.get("enabled", True) else "Show",
              f"ad:prod:t:{pid}"),
          btn("Delete", f"ad:prod:d:{pid}", style="danger")],
@@ -656,6 +680,82 @@ async def handle_callback(ctx: Ctx, rest: str) -> bool:
     return False
 
 
+# ─── PREMIUM EMOJI HARVEST ────────────────────────────────────
+async def harvest_emoji(ctx: Ctx, message: dict) -> bool:
+    """Read custom_emoji ids out of a message an admin forwarded here.
+
+    Forward any message that uses premium emoji and the ids are matched to
+    this bot's emoji slots by the emoji each sticker represents, then merged
+    into data/emoji.json. That is the whole setup for animated emoji — no
+    hunting through @RawDataBot.
+    """
+    text = message.get("text") or message.get("caption") or ""
+    entities = (message.get("entities") or []) + \
+               (message.get("caption_entities") or [])
+    found = [e for e in entities if e.get("type") == "custom_emoji"]
+    if not found:
+        return False
+
+    # id -> the character it stands for, taken from the message itself
+    seen: dict = {}
+    for entity in found:
+        eid = str(entity.get("custom_emoji_id") or "")
+        if not eid.isdigit() or eid in seen:
+            continue
+        seen[eid] = u16_slice(text, int(entity["offset"]),
+                              int(entity["length"]))
+
+    # Ask Telegram what each sticker really is; its own emoji beats the
+    # surrounding text when a message pads entities with spaces.
+    data = await tg.api("getCustomEmojiStickers",
+                        {"custom_emoji_ids": list(seen)[:200]}, quiet=True)
+    canonical = {}
+    if data.get("ok"):
+        for sticker in data.get("result") or []:
+            canonical[str(sticker.get("custom_emoji_id"))] = \
+                sticker.get("emoji") or ""
+
+    mapping: dict = {}
+    matched, unmatched = [], []
+    for eid, from_text in seen.items():
+        if eid not in canonical:
+            unmatched.append((eid, from_text, "not available to this bot"))
+            continue
+        char_text = canonical[eid]
+        slots = emo.slots_for_char(char_text)
+        if not slots:
+            unmatched.append((eid, char_text, "no slot uses this emoji"))
+            continue
+        for slot in slots:
+            mapping[slot] = eid
+        matched.append((char_text, slots, eid))
+
+    total = emo.save_premium(mapping) if mapping else len(emo.PREMIUM)
+
+    m = Msg()
+    m.header("star", "Premium emoji harvested")
+    m.kvline("ok", "Adopted", f"{len(matched)} emoji -> "
+                              f"{len(mapping)} slot(s)")
+    m.kvline("box", "Slots live now", f"{total} / {len(emo.EMOJI)}")
+    if matched:
+        m.nl()
+        for char_text, slots, _eid in matched[:24]:
+            m.text(f"{char_text} ").code(", ".join(slots)).nl()
+    if unmatched:
+        m.nl().emoji("warn").space().bold("Skipped").nl()
+        for _eid, char_text, why in unmatched[:10]:
+            m.text(f"{char_text or '?'} — {why}").nl()
+    m.nl().italic("Send /start to see them. Forward more messages to add "
+                  "the rest.")
+
+    text_out, entities_out = m.build()
+    await tg.send_message(ctx.chat_id, text_out, entities_out,
+                          kb(_back_row()))
+    logger.info("emoji harvest: %d slots from %d ids",
+                len(mapping), len(seen))
+    return True
+
+
 async def _product_field_prompt(ctx: Ctx, field: str, pid: str):
     if not store.product_get(pid):
         await toast(ctx, "Gone", alert=True)
@@ -670,6 +770,10 @@ async def _product_field_prompt(ctx: Ctx, field: str, pid: str):
         "emoji": f"One emoji slot name, e.g. star, box, mail, key\n"
                  f"Available: {', '.join(sorted(emo.EMOJI)[:24])} …",
         "qty": "min | max, for example 1 | 5",
+        "bulk": "Volume discounts, one tier per line:\n"
+                "qty | amount off each unit\n\n"
+                "Example:\n5 | 0.15\n10 | 0.20\n\n"
+                "Send - to remove all tiers.",
         "stock_mode": "lines, unlimited or manual\n\n"
                       "lines     = one stock line per buyer\n"
                       "unlimited = same payload for everyone\n"
@@ -770,19 +874,18 @@ async def handle_prompt(ctx: Ctx, mode: str, data: dict, text: str) -> bool:
             await send_new(ctx, screens.simple("warn", "Nothing to add", "",
                                                ctx.lang, kb(_back_row())))
             return True
-        before = store.stock_count(pid)
         store.stock_add(pid, lines)
         store.product_save(pid, gone_posted=False)
         state.clear_prompt(ctx.user_id)
         await product_open(ctx, pid)
 
-        if before <= 0:
-            try:
-                await broadcast.restocked(store.product_get(pid), len(lines))
-                await broadcast.alert_restock_subscribers(
-                    store.product_get(pid), len(lines))
-            except Exception as exc:             # noqa: BLE001
-                logger.warning("restock announce failed: %s", exc)
+        fresh = store.product_get(pid)
+        total = store.stock_count(pid)
+        try:
+            await broadcast.stock_alert(fresh, len(lines), total)
+            await broadcast.alert_restock_subscribers(fresh, len(lines))
+        except Exception as exc:                 # noqa: BLE001
+            logger.warning("restock announce failed: %s", exc)
         return True
 
     if mode == "ad_gift_add":
@@ -905,8 +1008,19 @@ async def handle_prompt(ctx: Ctx, mode: str, data: dict, text: str) -> bool:
 async def _apply_product_field(ctx: Ctx, pid: str, field: str, raw: str):
     if field == "price":
         price = util.parse_amount(raw)
-        if price is not None and price >= 0:
-            store.product_save(pid, price=price)
+        if price is None or price < 0:
+            return
+        old = float((store.product_get(pid) or {}).get("price") or 0.0)
+        store.product_save(pid, price=price)
+        # A price drop is news; a rise is not something to advertise.
+        if price < old:
+            try:
+                await broadcast.price_update(store.product_get(pid), old)
+            except Exception as exc:             # noqa: BLE001
+                logger.warning("price update announce failed: %s", exc)
+        return
+    if field == "bulk":
+        store.product_save(pid, bulk=_parse_bulk(raw))
         return
     if field == "qty":
         chunks = [part.strip() for part in raw.split("|")]

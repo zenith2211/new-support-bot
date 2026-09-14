@@ -10,6 +10,7 @@ database if you ever run more than one worker.
 import json
 import logging
 import os
+import random
 import threading
 
 from . import config, util
@@ -199,6 +200,68 @@ def user_get(user_id) -> dict:
     return users.get(user_id) or {}
 
 
+def customer_id(user_id) -> str:
+    """'#CX-201566' — a short public handle, safe to share for transfers
+    (unlike a Telegram id, it reveals nothing and is stable per user)."""
+    record = users.get(user_id)
+    if record is None:
+        return ""
+    existing = record.get("customer_id")
+    if existing:
+        return existing
+    with _lock:
+        taken = {
+            r.get("customer_id") for r in users.values()
+            if r.get("customer_id")
+        }
+        while True:
+            candidate = f"#CX-{random.randint(100000, 999999)}"
+            if candidate not in taken:
+                break
+        record["customer_id"] = candidate
+        users.save()
+    return candidate
+
+
+def find_by_customer_id(code: str) -> dict | None:
+    wanted = util.normalize_code(code).lstrip("#")
+    if not wanted:
+        return None
+    if not wanted.startswith("CX"):
+        wanted = f"CX-{wanted}"
+    wanted = wanted.replace("CX", "CX-").replace("--", "-")
+    for record in users.values():
+        stored = str(record.get("customer_id") or "").lstrip("#").upper()
+        if stored and stored == wanted:
+            return record
+    return None
+
+
+def transfer(from_id, to_id, amount: float) -> tuple[bool, str]:
+    """Move wallet balance between users. -> (ok, error_key)"""
+    amount = round(float(amount), 6)
+    if amount <= 0:
+        return False, "err_bad_number"
+    if str(from_id) == str(to_id):
+        return False, "transfer_self"
+    if users.get(to_id) is None:
+        return False, "transfer_no_user"
+
+    with _lock:
+        sender = users.get(from_id)
+        if sender is None:
+            return False, "err_not_found"
+        if float(sender.get("balance") or 0.0) + 1e-9 < amount:
+            return False, "transfer_short"
+        sender["balance"] = round(
+            float(sender.get("balance") or 0.0) - amount, 6)
+        receiver = users.get(to_id)
+        receiver["balance"] = round(
+            float(receiver.get("balance") or 0.0) + amount, 6)
+        users.save()
+    return True, ""
+
+
 def user_lang(user_id) -> str:
     return (user_get(user_id).get("lang") or config.DEFAULT_LANG)[:2]
 
@@ -357,6 +420,9 @@ def product_save(pid: str, **fields) -> dict:
         "manual_stock": 0,
         "min_qty": 1,
         "max_qty": 10,
+        # Volume discounts: [{"qty": 5, "off": 0.15}, ...] = buy 5 or more and
+        # each unit costs 0.15 less. Highest matching tier wins.
+        "bulk": [],
         "warranty": "",
         "sold": 0,
         "position": 0,
@@ -371,6 +437,87 @@ def product_save(pid: str, **fields) -> dict:
 def product_delete(pid: str):
     products.delete(pid)
     stock.delete(pid)
+
+
+def bulk_tiers(product: dict) -> list:
+    """Sorted, validated volume-discount tiers for a product."""
+    tiers = []
+    for tier in (product.get("bulk") or []):
+        try:
+            qty = int(tier.get("qty") or 0)
+            off = float(tier.get("off") or 0.0)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if qty > 1 and off > 0:
+            tiers.append({"qty": qty, "off": round(off, 6)})
+    tiers.sort(key=lambda t: t["qty"])
+    return tiers
+
+
+def unit_price_for(product: dict, qty: int) -> tuple[float, dict | None]:
+    """Per-unit price at this quantity. -> (price, tier applied or None)"""
+    base = float(product.get("price") or 0.0)
+    applied = None
+    for tier in bulk_tiers(product):
+        if qty >= tier["qty"]:
+            applied = tier
+    if not applied:
+        return base, None
+    return max(round(base - applied["off"], 6), 0.0), applied
+
+
+def bulk_label(product: dict) -> str:
+    """'Bulk x5+' for listings, or '' when the product has no tiers."""
+    tiers = bulk_tiers(product)
+    return f"Bulk x{tiers[0]['qty']}+" if tiers else ""
+
+
+def quote(pid: str, qty: int, coupon_code: str = "") -> dict:
+    """Price a basket without touching anything. -> dict of numbers.
+
+    Volume tiers apply first (they change the per-unit price), then a coupon
+    applies to the resulting subtotal. Lives here rather than in shop.py so
+    both the screens and the checkout can price without a circular import.
+    """
+    product = product_get(pid) or {}
+    qty = max(int(qty or 1), 1)
+    list_price = float(product.get("price") or 0.0)
+    price, tier = unit_price_for(product, qty)
+    subtotal = round(price * qty, 6)
+
+    discount = 0.0
+    coupon = None
+    if coupon_code:
+        coupon, _err, discount = coupon_check(coupon_code, pid, subtotal)
+    return {
+        "list_price": list_price,
+        "price": price,
+        "tier": tier,
+        "bulk_saved": round((list_price - price) * qty, 6),
+        "qty": qty,
+        "subtotal": subtotal,
+        "discount": round(discount, 6),
+        "total": round(subtotal - discount, 6),
+        "coupon": coupon["code"] if coupon else "",
+    }
+
+
+def qty_presets(product: dict, available: int) -> list:
+    """Quantity buttons to offer: the first few, plus each volume tier's
+    threshold, so the cheaper per-unit prices are one tap away."""
+    min_qty = max(int(product.get("min_qty") or 1), 1)
+    max_qty = max(int(product.get("max_qty") or 1), min_qty)
+    if product.get("stock_mode") != "unlimited":
+        max_qty = min(max_qty, max(available, min_qty))
+
+    wanted = [min_qty, min_qty + 1, min_qty + 2]
+    wanted += [tier["qty"] for tier in bulk_tiers(product)]
+
+    out = []
+    for value in wanted:
+        if min_qty <= value <= max_qty and value not in out:
+            out.append(value)
+    return sorted(out)[:6]
 
 
 def product_count(include_hidden: bool = False) -> int:

@@ -47,8 +47,35 @@ see the storefront immediately. Delete those categories from
 | Gift code redemption | Gift code button, `/gift CODE` |
 | Support, Profile, Language, Help, Terms | the remaining buttons |
 
-Quantity, coupons, per-product alerts (Stop Alerts / Get Alerts) and the
-delivery note all live on the product screen.
+Quantity, coupons, volume discounts, per-product alerts (Stop Alerts / Get
+Alerts) and the delivery note all live on the product screen.
+
+### Volume discounts
+
+Give a product bulk tiers (**/admin → product → Bulk rates**), one per line:
+
+```
+5 | 0.15
+10 | 0.20
+```
+
+Buy 5+ and every unit costs 0.15 less; 10+ and it is 0.20 less (highest
+matching tier wins). The tiers show on the product screen, the category
+listing (`Bulk x5+`), the confirm screen (as a saving) and in stock-alert
+posts — and each threshold becomes a one-tap quantity button.
+
+### Wallet transfers
+
+Every customer gets a stable, shareable **Customer ID** (`#CX-201566`) that
+reveals nothing about their Telegram account. Wallet → Transfer sends balance
+to another customer by that ID, and both sides get a confirmation.
+
+### Coloured buttons
+
+Confirm actions render green, destructive ones red, primary ones teal. This
+uses the `style` field on inline buttons — verified on Telegram Desktop
+7.1.4; clients that don't support it just show the default colour. Turn it
+off with `BUTTON_STYLES=0`.
 
 ## Commands
 
@@ -130,18 +157,28 @@ some help copy) fall back to English. Missing strings always fall back to
 English rather than failing, so you can add a language incrementally in
 `app/lang.py`.
 
-## Premium emoji (optional)
+## Premium (animated) emoji
 
-The UI uses named emoji slots. Drop a `data/emoji.json` of
-`{"slot": "custom_emoji_id"}` to render animated premium emoji in those slots:
+The UI uses named emoji slots, each with a plain unicode fallback. Map a slot
+to a premium custom emoji and it animates for Premium users; everyone else
+sees the same plain character.
+
+**The easy way — forward a message.** As an admin, forward any message that
+uses premium emoji into the bot. It reads the `custom_emoji_id` out of the
+message's entities, asks Telegram what each sticker represents, matches them
+to slots by emoji, and merges the result into `data/emoji.json`. It replies
+with what it adopted and what it skipped. Forward a few messages and the set
+fills in.
+
+**The manual way.** Write `data/emoji.json` yourself:
 
 ```json
-{ "products": "5447387942995655277", "wallet": "5447453226498552490" }
+{ "products": "5355193051193059834", "wallet": "5447453226498552490" }
 ```
 
-Slot names are the keys of `EMOJI` in `app/emoji.py`. Unknown or rejected ids
-fall back to the plain unicode character automatically — a bad id can never
-make a message fail to send.
+Slot names are the keys of `EMOJI` in `app/emoji.py`. A bad id can never make
+a message fail to send: the send is retried without custom-emoji entities, so
+the message still arrives with plain emoji.
 
 ## Tests
 

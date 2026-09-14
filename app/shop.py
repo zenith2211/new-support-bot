@@ -23,24 +23,10 @@ logger = logging.getLogger(__name__)
 FILE_DELIVERY_THRESHOLD = 6
 
 
-def quote(pid: str, qty: int, coupon_code: str = "") -> dict:
-    """Price a basket without touching anything. -> dict of numbers."""
-    product = store.product_get(pid) or {}
-    price = float(product.get("price") or 0.0)
-    qty = max(int(qty or 1), 1)
-    subtotal = round(price * qty, 6)
-    discount = 0.0
-    coupon = None
-    if coupon_code:
-        coupon, _err, discount = store.coupon_check(coupon_code, pid, subtotal)
-    return {
-        "price": price,
-        "qty": qty,
-        "subtotal": subtotal,
-        "discount": round(discount, 6),
-        "total": round(subtotal - discount, 6),
-        "coupon": coupon["code"] if coupon else "",
-    }
+# Pricing lives in store.py so screens can use it too; re-exported here
+# because checkout reads more naturally as shop.quote(...).
+quote = store.quote
+qty_presets = store.qty_presets
 
 
 def check_qty(product: dict, qty: int) -> tuple[bool, str, dict]:

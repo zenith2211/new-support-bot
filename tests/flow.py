@@ -336,6 +336,61 @@ async def scenario_wallet_and_gift():
            any("already used" in t.lower() for t in sent_to(USER["id"])),
            f"got {sent_to(USER['id'])}")
 
+    # ── customer id + wallet transfer ─────────────────────────
+    code = store.customer_id(USER["id"])
+    expect("customer id issued", code.startswith("#CX-") and len(code) == 10,
+           f"got {code!r}")
+    expect("customer id is stable", store.customer_id(USER["id"]) == code,
+           "id changed between calls")
+
+    store.user_upsert({"id": 777000111, "first_name": "Buyer",
+                       "username": "buyer"})
+    other = store.customer_id(777000111)
+    expect("ids are unique", other != code, f"both {code}")
+
+    store.credit(USER["id"], 5.0)
+    before_me = store.balance_of(USER["id"])
+    reset()
+    await press("w:tr")
+    expect_in("transfer prompt", "Customer ID", last_text(USER["id"]))
+    await send(f"{other} 2")
+    expect("sender debited",
+           abs(store.balance_of(USER["id"]) - (before_me - 2)) < 1e-6,
+           f"balance went {before_me} -> {store.balance_of(USER['id'])}")
+    expect("recipient credited",
+           abs(store.balance_of(777000111) - 2.0) < 1e-6,
+           f"recipient has {store.balance_of(777000111)}")
+    expect("recipient notified",
+           any("arrived" in t.lower() for t in sent_to(777000111)),
+           f"recipient got {sent_to(777000111)}")
+
+    reset()
+    await press("w:tr")
+    await send(f"{code} 1")
+    expect("cannot transfer to self",
+           any("your own" in t.lower() for t in
+               sent_to(USER["id"]) + toasts()),
+           f"got {sent_to(USER['id'])} {toasts()}")
+
+    reset()
+    await press("w:tr")
+    await send(f"{other} 99999")
+    expect("overdraft blocked",
+           any("not enough" in t.lower() for t in
+               sent_to(USER["id"]) + toasts()),
+           f"got {sent_to(USER['id'])} {toasts()}")
+    expect("overdraft left balances alone",
+           abs(store.balance_of(777000111) - 2.0) < 1e-6,
+           f"recipient now has {store.balance_of(777000111)}")
+
+    reset()
+    await press("w:tr")
+    await send("#CX-000000 1")
+    expect("unknown customer id rejected",
+           any("no user" in t.lower() for t in
+               sent_to(USER["id"]) + toasts()),
+           f"got {sent_to(USER['id'])} {toasts()}")
+
 
 async def scenario_account_screens():
     for command, needle in (
@@ -442,8 +497,58 @@ async def scenario_admin():
     expect("stock added", store.stock_count(pid) == 3,
            f"stock is {store.stock_count(pid)}")
     expect("restock announced",
-           any("BACK IN STOCK" in t for t in sent_to(CHANNEL)),
+           any("Stock Alert" in t for t in sent_to(CHANNEL)),
            f"channel got {sent_to(CHANNEL)[-3:]}")
+    expect("restock reports totals",
+           any("New stock added: +3" in t and "Total available: 3" in t
+               for t in sent_to(CHANNEL)),
+           f"channel got {sent_to(CHANNEL)[-1:]}")
+
+    # bulk / volume pricing
+    reset()
+    await press(f"ad:prod:f:bulk:{pid}", ADMIN)
+    await send("5 | 0.25\n10 | 0.50", ADMIN)
+    tiers = store.bulk_tiers(store.product_get(pid))
+    expect("bulk tiers saved", len(tiers) == 2, f"got {tiers}")
+    list_price = float(store.product_get(pid)["price"])
+    priced = store.quote(pid, 5)
+    want = round((list_price - 0.25) * 5, 6)
+    expect("bulk price applied", abs(priced["total"] - want) < 1e-6,
+           f"x5 total is {priced['total']}, expected {want}")
+    expect("bulk saving reported",
+           abs(priced["bulk_saved"] - 1.25) < 1e-6,
+           f"saved {priced['bulk_saved']}, expected 1.25")
+    plain = store.quote(pid, 4)
+    expect("below tier pays list price",
+           abs(plain["total"] - list_price * 4) < 1e-6,
+           f"x4 total is {plain['total']}, expected {list_price * 4}")
+    deep = store.quote(pid, 10)
+    want10 = round((list_price - 0.50) * 10, 6)
+    expect("second tier applied", abs(deep["total"] - want10) < 1e-6,
+           f"x10 total is {deep['total']}, expected {want10}")
+    presets = store.qty_presets(store.product_get(pid), 99)
+    expect("tier thresholds offered", 5 in presets and 10 in presets,
+           f"presets are {presets}")
+
+    reset()
+    await press(f"p:{pid}", ADMIN)
+    text = last_text(ADMIN["id"])
+    expect_in("bulk shown on product", "Bulk rate", text)
+    expect_in("bulk tier line", "x5+", text)
+
+    # a price drop announces itself
+    reset()
+    await press(f"ad:prod:f:price:{pid}", ADMIN)
+    await send("2.00", ADMIN)
+    expect("price drop announced",
+           any("Price update" in t for t in sent_to(CHANNEL)),
+           f"channel got {sent_to(CHANNEL)[-2:]}")
+    reset()
+    await press(f"ad:prod:f:price:{pid}", ADMIN)
+    await send("9.99", ADMIN)
+    expect("price rise stays quiet",
+           not any("Price update" in t for t in sent_to(CHANNEL)),
+           f"channel got {sent_to(CHANNEL)}")
 
     # edit the price through the field prompt
     reset()

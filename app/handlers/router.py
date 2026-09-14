@@ -76,6 +76,12 @@ async def on_message(message: dict):
 
     if ctx.is_admin:
         await commands.ensure_admin_menu(ctx.user_id, tg)
+        # An admin forwarding a message that uses premium emoji is asking to
+        # adopt those emoji — see admin.harvest_emoji.
+        if message.get("forward_origin") or message.get("forward_from") \
+                or message.get("forward_from_chat"):
+            if await admin.harvest_emoji(ctx, message):
+                return
 
     text = (message.get("text") or message.get("caption") or "").strip()
 
@@ -86,17 +92,20 @@ async def on_message(message: dict):
     if await _gated(ctx):
         return
 
-    # An open prompt owns the next message.
+    # The persistent keyboard always wins: tapping Products while a prompt is
+    # open should navigate, not be read as an answer to the prompt.
+    routes = screens.reply_labels(ctx.lang)
+    route = routes.get(text)
+    if route:
+        state.clear_prompt(ctx.user_id)
+        await _navigate(ctx, route)
+        return
+
+    # Otherwise an open prompt owns the next message.
     prompt = state.get_prompt(ctx.user_id)
     if prompt:
         if await _on_prompt(ctx, prompt, text, message):
             return
-
-    routes = screens.reply_labels(ctx.lang)
-    route = routes.get(text)
-    if route:
-        await _navigate(ctx, route)
-        return
 
     if text and account.looks_like_gift_code(text):
         await account.redeem_gift(ctx, text)
@@ -183,6 +192,9 @@ async def _on_prompt(ctx: Ctx, prompt: dict, text: str,
         return True
     if mode == "gift":
         await account.redeem_gift(ctx, text)
+        return True
+    if mode == "transfer":
+        await account.on_transfer_text(ctx, text)
         return True
 
     state.clear_prompt(ctx.user_id)
@@ -405,6 +417,9 @@ async def _wallet_route(ctx: Ctx, rest: str):
         return
     if rest == "hist":
         await account.history(ctx)
+        return
+    if rest == "tr":
+        await account.transfer_prompt(ctx)
         return
     if rest.startswith("top:"):
         amount = util.parse_amount(rest[4:])

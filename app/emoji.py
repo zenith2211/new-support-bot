@@ -118,6 +118,41 @@ def load_premium() -> dict:
     return PREMIUM
 
 
+def save_premium(mapping: dict) -> int:
+    """Merge {slot: custom_emoji_id} into data/emoji.json and reload."""
+    current = dict(PREMIUM)
+    current.update({
+        str(k): str(v).strip()
+        for k, v in mapping.items()
+        if str(v).strip().isdigit() and k in EMOJI
+    })
+    os.makedirs(config.DATA_DIR, exist_ok=True)
+    with open(_EMOJI_JSON, "w", encoding="utf-8") as fh:
+        json.dump(current, fh, ensure_ascii=False, indent=2, sort_keys=True)
+    load_premium()
+    return len(PREMIUM)
+
+
+def _normalize(char_text: str) -> str:
+    """Drop variation selectors and joiners so '✏️' matches '✏'."""
+    return "".join(
+        c for c in char_text
+        if c not in ("️", "︎", "‍")
+    )
+
+
+def slots_for_char(char_text: str) -> list:
+    """Slot names whose unicode char is this emoji (ignoring variation
+    selectors), so a harvested id lands on the right slots."""
+    target = _normalize(char_text)
+    if not target:
+        return []
+    return [
+        slot for slot, value in EMOJI.items()
+        if _normalize(value) == target
+    ]
+
+
 def char(name: str) -> str:
     """The plain unicode char for a slot, or a star if the slot is unknown."""
     return EMOJI.get(name, EMOJI["star"])
