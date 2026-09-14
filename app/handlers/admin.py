@@ -12,7 +12,7 @@ import logging
 
 from .. import broadcast, config, emoji as emo, payments, screens, store, tg, util
 from ..lang import t
-from ..msg import Msg, u16_slice
+from ..msg import Msg
 from ..view import View, btn, kb
 from .base import Ctx, send_new, show, toast
 from . import pay_flow
@@ -663,6 +663,14 @@ async def handle_callback(ctx: Ctx, rest: str) -> bool:
             await settings_menu(ctx)
         return True
 
+    if section == "pos":
+        await poster_assign(ctx, action if not arg else f"{action}:{arg}")
+        return True
+
+    if section == "posp":
+        await poster_to_product(ctx, action if not arg else f"{action}:{arg}")
+        return True
+
     if section == "ord" and action == "done":
         order = store.order_get(arg)
         if order:
@@ -678,6 +686,104 @@ async def handle_callback(ctx: Ctx, rest: str) -> bool:
         return True
 
     return False
+
+
+# ─── POSTER CAPTURE ───────────────────────────────────────────
+async def capture_poster(ctx: Ctx, message: dict) -> bool:
+    """Turn a photo an admin sent or forwarded into a usable poster.
+
+    Telegram file_ids are per-bot, but a photo delivered *to* this bot is
+    usable by it forever — so this is all the setup a poster needs. The photo
+    is offered as a banner for any screen, or as one product's image.
+    """
+    photos = message.get("photo") or []
+    if not photos:
+        return False
+
+    # Largest size last; that is the one worth keeping.
+    file_id = photos[-1].get("file_id")
+    if not file_id:
+        return False
+
+    from .. import state
+    state.set_prompt(ctx.user_id, "ad_poster_target", file_id=file_id)
+
+    m = Msg()
+    m.header("link", "Poster received")
+    m.text("Where should this image go?").nl(2)
+    m.emoji("warn").space()
+    m.italic("If the image carries another store's logo or watermark, use "
+             "your own artwork instead — otherwise you are advertising "
+             "them inside your bot.")
+
+    rows = [
+        [btn("Start screen", "ad:pos:BANNER_START", emoji_name="home"),
+         btn("Products", "ad:pos:BANNER_PRODUCTS", emoji_name="products")],
+        [btn("Wallet", "ad:pos:BANNER_WALLET", emoji_name="wallet"),
+         btn("Orders", "ad:pos:BANNER_ORDERS", emoji_name="orders")],
+        [btn("Gift code", "ad:pos:BANNER_GIFT", emoji_name="gift"),
+         btn("Support", "ad:pos:BANNER_SUPPORT", emoji_name="support")],
+        [btn("New order post", "ad:pos:POSTER_NEW_ORDER",
+             emoji_name="broadcast"),
+         btn("Wallet funded post", "ad:pos:POSTER_WALLET_FUNDED",
+             emoji_name="money")],
+        [btn("Almost gone post", "ad:pos:POSTER_ALMOST_GONE",
+             emoji_name="fire"),
+         btn("Delivered", "ad:pos:POSTER_DELIVERED", emoji_name="ok")],
+        [btn("A product", "ad:pos:product", emoji_name="box",
+             style="primary")],
+        [btn("Cancel", "ad:home", emoji_name="no", style="danger")],
+    ]
+    text, entities = m.build()
+    await tg.send_message(ctx.chat_id, text, entities, kb(*rows))
+    return True
+
+
+async def poster_assign(ctx: Ctx, target: str):
+    """Save the pending poster to a banner slot or to a product."""
+    from .. import state
+    prompt = state.get_prompt(ctx.user_id)
+    if not prompt or prompt["mode"] not in ("ad_poster_target",):
+        await toast(ctx, "No poster pending — send the photo again",
+                    alert=True)
+        return
+    file_id = prompt["data"].get("file_id", "")
+
+    if target == "product":
+        state.set_prompt(ctx.user_id, "ad_poster_product", file_id=file_id)
+        everything = sorted(store.products.values(),
+                            key=lambda p: str(p.get("name") or ""))
+        rows = [[btn(util.clip(p.get("name"), 34), f"ad:posp:{p['id']}",
+                     emoji_name=p.get("emoji") or "box")]
+                for p in everything[:20]]
+        rows.append([btn("Cancel", "ad:home", emoji_name="no")])
+        m = Msg()
+        m.header("box", "Which product?")
+        m.text("The poster shows above that product's detail screen.")
+        await show(ctx, View.of(m, kb(*rows)))
+        return
+
+    store.set_setting(f"poster_{target}", file_id)
+    state.clear_prompt(ctx.user_id)
+    m = Msg()
+    m.header("ok", "Poster saved")
+    m.kvline("link", "Slot", target)
+    m.nl().italic("It is live now — open that screen to see it. Send another "
+                  "photo to set a different slot.")
+    await show(ctx, View.of(m, kb(_back_row())))
+
+
+async def poster_to_product(ctx: Ctx, pid: str):
+    from .. import state
+    prompt = state.get_prompt(ctx.user_id)
+    file_id = (prompt or {}).get("data", {}).get("file_id", "")
+    if not file_id or not store.product_get(pid):
+        await toast(ctx, "No poster pending", alert=True)
+        return
+    store.product_save(pid, image=file_id)
+    state.clear_prompt(ctx.user_id)
+    await toast(ctx, "Poster saved")
+    await product_open(ctx, pid)
 
 
 # ─── PREMIUM EMOJI HARVEST ────────────────────────────────────
@@ -696,64 +802,89 @@ async def harvest_emoji(ctx: Ctx, message: dict) -> bool:
     if not found:
         return False
 
-    # id -> the character it stands for, taken from the message itself
-    seen: dict = {}
+    ids = []
     for entity in found:
         eid = str(entity.get("custom_emoji_id") or "")
-        if not eid.isdigit() or eid in seen:
-            continue
-        seen[eid] = u16_slice(text, int(entity["offset"]),
-                              int(entity["length"]))
+        if eid.isdigit() and eid not in ids:
+            ids.append(eid)
 
-    # Ask Telegram what each sticker really is; its own emoji beats the
-    # surrounding text when a message pads entities with spaces.
-    data = await tg.api("getCustomEmojiStickers",
-                        {"custom_emoji_ids": list(seen)[:200]}, quiet=True)
-    canonical = {}
-    if data.get("ok"):
-        for sticker in data.get("result") or []:
-            canonical[str(sticker.get("custom_emoji_id"))] = \
-                sticker.get("emoji") or ""
+    # Every custom emoji belongs to a set. Pulling the whole set turns one
+    # forwarded message into hundreds of usable emoji, which is what makes a
+    # single forward enough to style the entire bot.
+    pool, set_names = await _emoji_pool(ids)
 
     mapping: dict = {}
-    matched, unmatched = [], []
-    for eid, from_text in seen.items():
-        if eid not in canonical:
-            unmatched.append((eid, from_text, "not available to this bot"))
-            continue
-        char_text = canonical[eid]
-        slots = emo.slots_for_char(char_text)
-        if not slots:
-            unmatched.append((eid, char_text, "no slot uses this emoji"))
-            continue
-        for slot in slots:
+    for slot, char_text in emo.EMOJI.items():
+        eid = pool.get(emo.normalize(char_text))
+        if eid:
             mapping[slot] = eid
-        matched.append((char_text, slots, eid))
 
     total = emo.save_premium(mapping) if mapping else len(emo.PREMIUM)
+    missing = [slot for slot in emo.EMOJI if slot not in emo.PREMIUM]
 
     m = Msg()
-    m.header("star", "Premium emoji harvested")
-    m.kvline("ok", "Adopted", f"{len(matched)} emoji -> "
-                              f"{len(mapping)} slot(s)")
-    m.kvline("box", "Slots live now", f"{total} / {len(emo.EMOJI)}")
-    if matched:
+    m.header("star", "Premium emoji adopted")
+    m.kvline("box", "Emoji sets read", len(set_names))
+    m.kvline("chart", "Emoji available", len(pool))
+    m.kvline("ok", "Slots now animated", f"{total} / {len(emo.EMOJI)}")
+    if set_names:
         m.nl()
-        for char_text, slots, _eid in matched[:24]:
-            m.text(f"{char_text} ").code(", ".join(slots)).nl()
-    if unmatched:
-        m.nl().emoji("warn").space().bold("Skipped").nl()
-        for _eid, char_text, why in unmatched[:10]:
-            m.text(f"{char_text or '?'} — {why}").nl()
-    m.nl().italic("Send /start to see them. Forward more messages to add "
-                  "the rest.")
+        for name in sorted(set_names)[:12]:
+            m.text("• ").code(name).nl()
+    if missing:
+        m.nl().emoji("warn").space()
+        m.bold(f"Still plain ({len(missing)})").nl()
+        m.text(", ".join(f"{slot} {emo.EMOJI[slot]}"
+                         for slot in missing[:20])).nl()
+        m.nl().italic("Forward a message that uses those emoji and they "
+                      "will be picked up too.")
+    else:
+        m.nl().emoji("party").space().italic("Every slot is animated now.")
+    m.nl(2).italic("Send /start to see the result.")
 
     text_out, entities_out = m.build()
     await tg.send_message(ctx.chat_id, text_out, entities_out,
                           kb(_back_row()))
-    logger.info("emoji harvest: %d slots from %d ids",
-                len(mapping), len(seen))
+    logger.info("emoji harvest: %d sets, %d emoji, %d/%d slots",
+                len(set_names), len(pool), total, len(emo.EMOJI))
     return True
+
+
+async def _emoji_pool(ids: list) -> tuple[dict, list]:
+    """{normalized emoji char: custom_emoji_id} for every emoji in the sets
+    the given ids belong to, plus the set names."""
+    pool: dict = {}
+    set_names: list = []
+    if not ids:
+        return pool, set_names
+
+    data = await tg.api("getCustomEmojiStickers",
+                        {"custom_emoji_ids": ids[:200]}, quiet=True)
+    if not data.get("ok"):
+        return pool, set_names
+
+    for sticker in data.get("result") or []:
+        # The sticker's own emoji is authoritative; also seed the pool from
+        # it so a set we cannot read still contributes.
+        char_text = emo.normalize(sticker.get("emoji") or "")
+        eid = str(sticker.get("custom_emoji_id") or "")
+        if char_text and eid:
+            pool.setdefault(char_text, eid)
+        name = sticker.get("set_name")
+        if name and name not in set_names:
+            set_names.append(name)
+
+    for name in set_names:
+        pack = await tg.api("getStickerSet", {"name": name}, quiet=True)
+        if not pack.get("ok"):
+            continue
+        for sticker in (pack.get("result") or {}).get("stickers") or []:
+            char_text = emo.normalize(sticker.get("emoji") or "")
+            eid = str(sticker.get("custom_emoji_id") or "")
+            if char_text and eid:
+                pool.setdefault(char_text, eid)
+
+    return pool, set_names
 
 
 async def _product_field_prompt(ctx: Ctx, field: str, pid: str):

@@ -42,7 +42,8 @@ see the storefront immediately. Delete those categories from
 | Low balance — shortfall, min top-up | confirm without enough balance |
 | Pay and get item — pick a gateway | tap Pay and get item |
 | Delivered — credentials, order id | after a successful purchase |
-| Wallet, top-up, history | Wallet button, `/wallet`, `/topup` |
+| Wallet — balance, Customer ID, recent activity | Wallet button, `/wallet` |
+| Add funds — pick method, then amount | Wallet → Top up, `/topup` |
 | Orders and order detail with resend | Orders button, `/orders` |
 | Gift code redemption | Gift code button, `/gift CODE` |
 | Support, Profile, Language, Help, Terms | the remaining buttons |
@@ -72,10 +73,38 @@ to another customer by that ID, and both sides get a confirmation.
 
 ### Coloured buttons
 
-Confirm actions render green, destructive ones red, primary ones teal. This
-uses the `style` field on inline buttons — verified on Telegram Desktop
-7.1.4; clients that don't support it just show the default colour. Turn it
-off with `BUTTON_STYLES=0`.
+Buttons carry a `style` field. Verified against the live API — Telegram
+*validates* it on reply-keyboard buttons and rejects anything else, so the
+accepted set is exactly:
+
+| `style` | Inline button | Reply keyboard |
+|---|---|---|
+| `primary` | teal | **blue** |
+| `success` | green | green |
+| `danger` | red | red |
+| `default` (or omitted) | dark | dark |
+
+The persistent menu uses `primary`, so it renders blue. Confirm actions are
+green and destructive ones red. Turn the whole thing off with
+`BUTTON_STYLES=0`.
+
+### Posters
+
+Send or forward any photo to the bot as an admin and it offers to install it:
+as the banner for a specific screen (start, products, wallet, orders, gift,
+support), as one of the channel-post images, or as a single product's image.
+A file_id received by your bot is usable by it permanently, so that is the
+whole setup.
+
+You can still set `BANNER_*` / `POSTER_*` env vars instead — each accepts an
+`https://` URL, a `file_id`, or a path to a file in the repo. Anything set
+in-bot takes precedence. Leave a slot empty and that screen is plain text.
+
+A screen whose text exceeds Telegram's 1024-character caption limit drops its
+poster automatically, so a long description never blocks a message.
+
+Don't install an image carrying another store's logo or watermark — the bot
+warns you about this, because it would advertise them inside your shop.
 
 ## Commands
 
@@ -126,16 +155,6 @@ Set `LOG_CHANNEL_ID` and add the bot as an admin in that channel to get:
 
 Customer ids are always masked in public posts (`51******04`).
 
-## Posters
-
-Every `BANNER_*` / `POSTER_*` variable accepts an `https://` URL, a Telegram
-`file_id`, or a path to a file in the repo. Leave one blank and that screen is
-sent as plain text. Per-product posters are set in the admin panel
-(**Product → Poster**) and override `BANNER_PRODUCTS`.
-
-A screen whose text exceeds Telegram's 1024-character caption limit is sent as
-text automatically, so a long description never blocks a message.
-
 ## Payments
 
 Binance Pay is the built-in gateway. Its button only appears once both
@@ -163,12 +182,13 @@ The UI uses named emoji slots, each with a plain unicode fallback. Map a slot
 to a premium custom emoji and it animates for Premium users; everyone else
 sees the same plain character.
 
-**The easy way — forward a message.** As an admin, forward any message that
-uses premium emoji into the bot. It reads the `custom_emoji_id` out of the
-message's entities, asks Telegram what each sticker represents, matches them
-to slots by emoji, and merges the result into `data/emoji.json`. It replies
-with what it adopted and what it skipped. Forward a few messages and the set
-fills in.
+**The easy way — forward one message.** As an admin, forward any message that
+uses premium emoji into the bot. It reads the `custom_emoji_id`s out of the
+entities, then pulls *every emoji in the sets those stickers belong to* — one
+message typically yields several hundred emoji, enough to fill almost every
+slot at once. Slots are matched by the emoji each sticker represents, so the
+animated version and the plain fallback always show the same picture. The bot
+replies with how many slots are live and which are still plain.
 
 **The manual way.** Write `data/emoji.json` yourself:
 

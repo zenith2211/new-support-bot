@@ -69,7 +69,7 @@ async def wallet_funded(topup: dict):
     link = await _deep_link()
     keyboard = kb([btn(t("btn_visit_bot", lang), url=link,
                        emoji_name="rocket")]) if link else None
-    await _post(text, entities, keyboard, config.POSTER_WALLET_FUNDED)
+    await _post(text, entities, keyboard, store.poster("POSTER_WALLET_FUNDED"))
 
 
 # ─── NEW ORDER ────────────────────────────────────────────────
@@ -77,7 +77,7 @@ def build_new_order(order: dict, lang: str = "en") -> tuple[str, list]:
     m = Msg()
     m.bar_header(t("bc_order_title", lang), trailing_emoji="fire")
     m.emoji("clipboard").space().bold(f"{t('bc_order_product', lang)}: ")
-    m.text(emo.BAR).bold(order.get("product_name") or "—").nl()
+    m.bar().bold(order.get("product_name") or "—").nl()
     m.kvline("money", t("bc_order_qty", lang), order.get("qty") or 1)
     m.kvline("money", t("bc_order_paid", lang),
              util.fmt_money(order.get("total")))
@@ -97,7 +97,7 @@ async def new_order(order: dict):
                        emoji_name="products")]) if link else None
 
     product = store.product_get(order.get("pid")) or {}
-    poster = product.get("image") or config.POSTER_NEW_ORDER
+    poster = product.get("image") or store.poster("POSTER_NEW_ORDER")
     await _post(text, entities, keyboard, poster)
 
 
@@ -125,7 +125,7 @@ async def almost_gone(product: dict, count: int):
     keyboard = kb([btn(util.clip(product.get("name") or "—", 40), url=link,
                        emoji_name=product.get("emoji") or "box",
                        style="success")]) if link else None
-    poster = product.get("image") or config.POSTER_ALMOST_GONE
+    poster = product.get("image") or store.poster("POSTER_ALMOST_GONE")
     await _post(text, entities, keyboard, poster)
 
 
@@ -151,7 +151,7 @@ async def restocked(product: dict, added: int):
     link = await _deep_link(f"p_{product.get('id')}")
     keyboard = kb([btn(t("btn_buy_now", lang), url=link,
                        emoji_name="products")]) if link else None
-    poster = product.get("image") or config.POSTER_NEW_ORDER
+    poster = product.get("image") or store.poster("POSTER_NEW_ORDER")
     await _post(text, entities, keyboard, poster)
 
 
@@ -192,7 +192,7 @@ async def stock_alert(product: dict, added: int, total: int):
         [btn(t("btn_stop_alerts", lang), f"pa:{product.get('id')}",
              emoji_name="bell", style="danger")],
     )
-    poster = product.get("image") or config.POSTER_NEW_ORDER
+    poster = product.get("image") or store.poster("POSTER_NEW_ORDER")
     await _post(text, entities, keyboard, poster)
 
 
@@ -220,7 +220,7 @@ async def price_update(product: dict, old_price: float):
     keyboard = kb([btn(t("btn_buy_now", lang), url=link,
                        emoji_name="products",
                        style="primary")]) if link else None
-    poster = product.get("image") or config.POSTER_NEW_ORDER
+    poster = product.get("image") or store.poster("POSTER_NEW_ORDER")
     await _post(text, entities, keyboard, poster)
 
     sent = 0

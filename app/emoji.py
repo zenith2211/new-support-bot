@@ -23,63 +23,70 @@ logger = logging.getLogger(__name__)
 BAR = "▎"          # ▎
 DIVIDER = "─" * 14  # ──────────────
 
+# Every slot's plain unicode character. These are chosen to exist in widely
+# available premium emoji sets, so a harvested id and the plain fallback
+# always show the same picture (see slots_for_char).
 EMOJI = {
+    # accent bar used as a header prefix — a custom emoji in polished
+    # storefronts, a plain block character otherwise
+    "bar":        "▎",
+
     # main menu
     "products":   "\U0001F381",   # 🎁
     "wallet":     "\U0001F4B3",   # 💳
     "orders":     "\U0001F9FE",   # 🧾
-    "gift":       "\U0001F39F",   # 🎟
+    "gift":       "\U0001F49D",   # 💝
     "support":    "\U0001F3A7",   # 🎧
-    "profile":    "\U0001F194",   # 🆔
+    "profile":    "\U0001F464",   # 👤
     "language":   "\U0001F310",   # 🌐
     "home":       "\U0001F3E0",   # 🏠
     "help":       "❓",       # ❓
-    "terms":      "\U0001F4C3",   # 📃
+    "terms":      "\U0001F4C4",   # 📄
 
     # money
     "money":      "\U0001F4B5",   # 💵
     "price":      "\U0001F3F7",   # 🏷
     "balance":    "\U0001F4B0",   # 💰
-    "bank":       "\U0001F3DB",   # 🏛
+    "bank":       "\U0001F3E6",   # 🏦
     "card":       "\U0001F4B3",   # 💳
     "coin":       "\U0001FA99",   # 🪙
 
     # catalog
-    "category":   "\U0001F5C2",   # 🗂
-    "box":        "\U0001F4E6",   # 📦
-    "catalog":    "\U0001F522",   # 🔢
+    "category":   "\U0001F4C1",   # 📁
+    "box":        "\U0001F6CD",   # 🛍
+    "catalog":    "\U0001F4D6",   # 📖
     "stock":      "✅",       # ✅
     "sold":       "\U0001F3C6",   # 🏆
     "sku":        "\U0001F3F7",   # 🏷
     "delivery":   "\U0001F9FE",   # 🧾
     "note":       "\U0001F4D1",   # 📑
     "qty":        "\U0001F9FE",   # 🧾
-    "coupon":     "\U0001F39F",   # 🎟
+    "coupon":     "\U0001F516",   # 🔖
 
     # state
     "ok":         "✅",       # ✅
     "no":         "\U0001F6AB",   # 🚫
     "warn":       "⚠",       # ⚠
-    "low":        "\U0001F53B",   # 🔻
+    "low":        "\U0001F53D",   # 🔽
     "fire":       "\U0001F525",   # 🔥
     "spark":      "✨",       # ✨
     "party":      "\U0001F389",   # 🎉
     "rocket":     "\U0001F680",   # 🚀
-    "clock":      "\U0001F550",   # 🕐
+    "clock":      "⏰",       # ⏰
     "bell":       "\U0001F514",   # 🔔
-    "bell_off":   "\U0001F515",   # 🔕
+    "bell_off":   "\U0001F4F4",   # 📴
     "lock":       "\U0001F512",   # 🔒
     "key":        "\U0001F511",   # 🔑
     "refresh":    "\U0001F504",   # 🔄
     "back":       "\U0001F519",   # 🔙
     "close":      "❌",       # ❌
     "star":       "⭐",       # ⭐
-    "tip":        "\U0001F34B",   # 🍋
-    "user":       "\U0001F464",   # 👤
-    "id":         "\U0001F194",   # 🆔
+    "tip":        "\U0001F4A1",   # 💡
+    "user":       "\U0001F465",   # 👥
+    "id":         "\U0001F4C7",   # 📇
     "clipboard":  "\U0001F4CB",   # 📋
     "chart":      "\U0001F4C8",   # 📈
-    "admin":      "\U0001F6E0",   # 🛠
+    "admin":      "⚙",       # ⚙
     "link":       "\U0001F517",   # 🔗
     "mail":       "\U0001F4E7",   # 📧
     "search":     "\U0001F50D",   # 🔍
@@ -89,7 +96,7 @@ EMOJI = {
     "minus":      "➖",       # ➖
     "trash":      "\U0001F5D1",   # 🗑
     "edit":       "✏",       # ✏
-    "dot":        "•",       # •
+    "dot":        "•",       # • (a bullet, deliberately never an emoji)
 }
 
 # Filled from data/emoji.json at import time.
@@ -133,7 +140,7 @@ def save_premium(mapping: dict) -> int:
     return len(PREMIUM)
 
 
-def _normalize(char_text: str) -> str:
+def normalize(char_text: str) -> str:
     """Drop variation selectors and joiners so '✏️' matches '✏'."""
     return "".join(
         c for c in char_text
@@ -144,12 +151,12 @@ def _normalize(char_text: str) -> str:
 def slots_for_char(char_text: str) -> list:
     """Slot names whose unicode char is this emoji (ignoring variation
     selectors), so a harvested id lands on the right slots."""
-    target = _normalize(char_text)
+    target = normalize(char_text)
     if not target:
         return []
     return [
         slot for slot, value in EMOJI.items()
-        if _normalize(value) == target
+        if normalize(value) == target
     ]
 
 

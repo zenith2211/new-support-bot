@@ -89,7 +89,7 @@ def start(tg_user: dict, lang: str, is_admin: bool = False) -> View:
         m.italic(note).nl(2)
     m.emoji("tip").space().italic(t("start_tip", lang))
 
-    return View.of(m, keyboard=main_reply_kb(lang), poster=config.BANNER_START)
+    return View.of(m, keyboard=main_reply_kb(lang), poster=store.poster("BANNER_START"))
 
 
 # ─── CATEGORIES ───────────────────────────────────────────────
@@ -107,7 +107,7 @@ def categories(lang: str) -> View:
             m,
             kb([btn(t("btn_refresh", lang), "nav:products", emoji_name="refresh")],
                home_row(lang)),
-            poster=config.BANNER_PRODUCTS,
+            poster=store.poster("BANNER_PRODUCTS"),
         )
 
     m.kvline("bank", t("products_categories", lang), len(cats))
@@ -129,7 +129,7 @@ def categories(lang: str) -> View:
         btn(t("btn_refresh", lang), "nav:products", emoji_name="refresh"),
         btn(t("btn_close", lang), "nav:close", emoji_name="close", style="danger"),
     ])
-    return View.of(m, kb(*rows), poster=config.BANNER_PRODUCTS)
+    return View.of(m, kb(*rows), poster=store.poster("BANNER_PRODUCTS"))
 
 
 # ─── ONE CATEGORY ─────────────────────────────────────────────
@@ -144,7 +144,7 @@ def category(cat: dict, lang: str) -> View:
             m,
             kb([btn(t("btn_catalog", lang), "nav:products",
                     emoji_name="catalog")]),
-            poster=config.BANNER_PRODUCTS,
+            poster=store.poster("BANNER_PRODUCTS"),
         )
 
     m.text(t("category_intro", lang, n=len(items))).nl(2)
@@ -180,7 +180,7 @@ def category(cat: dict, lang: str) -> View:
                          emoji_name=product.get("emoji") or "box")])
     rows.append([btn(t("btn_catalog", lang), "nav:products",
                      emoji_name="catalog")])
-    return View.of(m, kb(*rows), poster=config.BANNER_PRODUCTS)
+    return View.of(m, kb(*rows), poster=store.poster("BANNER_PRODUCTS"))
 
 
 # ─── PRODUCT DETAIL ───────────────────────────────────────────
@@ -203,7 +203,7 @@ def product(product_rec: dict, lang: str, balance: float,
 
     m.emoji("stock").space().bold(f"{t('pd_stock', lang)}: ")
     m.bold(_stock_words(pid, lang))
-    m.text(" · ").text(emo.BAR)
+    m.text(" · ").bar()
     m.bold(f"{t('pd_wallet', lang)}: ").bold(util.fmt_money(balance)).nl()
 
     m.kvline("sold", t("pd_sold", lang), int(product_rec.get("sold") or 0))
@@ -282,7 +282,7 @@ def product(product_rec: dict, lang: str, balance: float,
     rows.append([btn(t("btn_back", lang), f"cat:{product_rec.get('cat_id')}",
                      emoji_name="back")])
 
-    poster = product_rec.get("image") or config.BANNER_PRODUCTS
+    poster = product_rec.get("image") or store.poster("BANNER_PRODUCTS")
     return View.of(m, kb(*rows), poster=poster)
 
 
@@ -469,7 +469,7 @@ def delivered(order: dict, lang: str, balance: float) -> View:
     if store.support_url():
         rows.append([btn(t("btn_contact_support", lang),
                          url=store.support_url(), emoji_name="support")])
-    return View.of(m, kb(*rows), poster=config.POSTER_DELIVERED)
+    return View.of(m, kb(*rows), poster=store.poster("POSTER_DELIVERED"))
 
 
 # ─── WALLET ───────────────────────────────────────────────────
@@ -513,12 +513,47 @@ def wallet(user_rec: dict, lang: str) -> View:
          btn(t("btn_history", lang), "w:hist", emoji_name="orders")],
         [btn(t("btn_home", lang), "nav:home", emoji_name="back",
              style="primary")],
-    ), poster=config.BANNER_WALLET)
+    ), poster=store.poster("BANNER_WALLET"))
 
 
-def topup_amounts(lang: str, balance: float) -> View:
+def topup_methods(lang: str, balance: float,
+                  amount: float | None = None) -> View:
+    """Step 1 of Add funds: choose how to pay. When `amount` is already known
+    (e.g. `/topup 5`) the buttons jump straight to the invoice."""
+    methods = payments.available()
+    m = Msg()
+    m.header("card", t("topup_title", lang))
+    if amount is not None:
+        m.kvline("money", t("invoice_amount", lang), util.fmt_money(amount))
+    m.kvline("money", t("wallet_balance", lang), util.fmt_money(balance))
+    m.nl()
+    if methods:
+        m.emoji("rocket").space().text(t("pay_pick", lang)).nl()
+        m.emoji("ok").space().text(f"{t('wallet_accepted', lang)}: ")
+        m.text(", ".join(method.label for method in methods)).nl()
+    else:
+        m.emoji("warn").space().italic(t("pay_none", lang))
+
+    suffix = f":{util.fmt_amount(amount)}" if amount is not None else ""
+    rows = []
+    cells = [btn(method.label, f"wm:{method.key}{suffix}",
+                 emoji_name=method.emoji, style="success")
+             for method in methods]
+    if cells:
+        rows.append([cells[0]])                 # first method spans the row
+        for index in range(1, len(cells), 2):
+            rows.append(cells[index:index + 2])
+    rows.append([btn(t("btn_gift", lang), "nav:gift", emoji_name="gift")])
+    rows.append([btn(t("btn_wallet", lang), "nav:wallet", emoji_name="wallet",
+                     style="primary")])
+    return View.of(m, kb(*rows), poster=store.poster("BANNER_WALLET"))
+
+
+def topup_amounts(lang: str, balance: float, method_key: str) -> View:
+    """Step 2 of Add funds: choose how much."""
     m = Msg()
     m.header("plus", t("topup_title", lang))
+    m.kvline("bank", t("invoice_method", lang), payments.label(method_key))
     m.kvline("money", t("wallet_balance", lang), util.fmt_money(balance))
     m.nl()
     m.text(t("topup_pick", lang)).nl(2)
@@ -529,34 +564,16 @@ def topup_amounts(lang: str, balance: float) -> View:
     rows = []
     for index in range(0, len(presets), 3):
         rows.append([
-            btn(util.fmt_money_short(amount), f"w:top:{amount}",
-                emoji_name="money")
+            btn(util.fmt_money_short(amount),
+                f"wm:{method_key}:{util.fmt_amount(amount)}",
+                emoji_name="money", style="success")
             for amount in presets[index:index + 3]
         ])
-    rows.append([btn(t("btn_custom", lang), "w:topc", emoji_name="star")])
-    rows.append([btn(t("btn_wallet", lang), "nav:wallet", emoji_name="back")])
-    return View.of(m, kb(*rows), poster=config.BANNER_WALLET)
-
-
-def topup_methods(lang: str, amount: float) -> View:
-    methods = payments.available()
-    m = Msg()
-    m.header("card", t("topup_title", lang))
-    m.kvline("money", t("invoice_amount", lang), util.fmt_money(amount))
-    m.nl()
-    if methods:
-        m.emoji("rocket").space().italic(t("pay_pick", lang))
-    else:
-        m.emoji("warn").space().italic(t("pay_none", lang))
-
-    rows = [
-        [btn(method.label, f"wm:{method.key}:{util.fmt_amount(amount)}",
-             emoji_name=method.emoji, style="success")]
-        for method in methods
-    ]
-    rows.append([btn(t("btn_gift", lang), "nav:gift", emoji_name="gift")])
-    rows.append([btn(t("btn_back", lang), "w:top", emoji_name="back")])
-    return View.of(m, kb(*rows))
+    rows.append([btn(t("btn_custom", lang), f"w:topc:{method_key}",
+                     emoji_name="star")])
+    rows.append([btn(t("btn_back", lang), "w:top", emoji_name="back",
+                     style="primary")])
+    return View.of(m, kb(*rows), poster=store.poster("BANNER_WALLET"))
 
 
 def wallet_history(user_id, lang: str) -> View:
@@ -590,7 +607,7 @@ def orders(user_id, lang: str) -> View:
             [btn(t("btn_products", lang), "nav:products",
                  emoji_name="products")],
             home_row(lang),
-        ), poster=config.BANNER_ORDERS)
+        ), poster=store.poster("BANNER_ORDERS"))
 
     m.text(t("orders_intro", lang, n=len(mine))).nl(2)
     for order in mine:
@@ -606,7 +623,7 @@ def orders(user_id, lang: str) -> View:
                  f"ord:{order['id']}", emoji_name="box")]
             for order in mine]
     rows.append(home_row(lang))
-    return View.of(m, kb(*rows), poster=config.BANNER_ORDERS)
+    return View.of(m, kb(*rows), poster=store.poster("BANNER_ORDERS"))
 
 
 def order_detail(order: dict, lang: str) -> View:
@@ -654,26 +671,32 @@ def order_detail(order: dict, lang: str) -> View:
 # ─── GIFT CODE ────────────────────────────────────────────────
 def gift(lang: str, balance: float) -> View:
     m = Msg()
-    m.header("gift", t("gift_title", lang))
-    m.kvline("money", t("wallet_balance", lang), util.fmt_money(balance))
-    m.nl()
+    m.header("gift", t("gift_title", lang).upper())
     m.text(t("gift_intro", lang)).nl(2)
-    m.emoji("rocket").space().italic(t("gift_send_now", lang))
+    m.kvline("money", t("wallet_balance", lang), util.fmt_money(balance))
     return View.of(m, kb(
-        [btn(t("btn_wallet", lang), "nav:wallet", emoji_name="wallet")],
-        home_row(lang),
-    ), poster=config.BANNER_GIFT)
+        [btn(t("btn_wallet", lang), "nav:wallet", emoji_name="wallet",
+             style="primary")],
+    ), poster=store.poster("BANNER_GIFT"))
 
 
 # ─── SUPPORT ──────────────────────────────────────────────────
 def support(lang: str) -> View:
+    handle = (store.setting("support_username") or "").lstrip("@")
+    url = store.support_url()
+
     m = Msg()
     m.header("support", t("support_title", lang))
     m.text(t("support_intro", lang)).nl(2)
+    if handle:
+        m.emoji("id").space().bold(f"{t('support_contact', lang)}: ")
+        m.text(f"@{handle}").nl()
+        m.emoji("link").space().bold(f"{t('support_chat', lang)}: ")
+        m.text(url).nl(2)
+    m.text(t("support_keep", lang)).nl(2)
     m.emoji("clock").space().italic(t("support_hours", lang))
 
     rows = []
-    url = store.support_url()
     if url:
         rows.append([btn(t("btn_contact_support", lang), url=url,
                          emoji_name="support", style="success")])
@@ -682,8 +705,9 @@ def support(lang: str) -> View:
         rows.append([btn(store.store_name(), url=channel, emoji_name="link")])
     rows.append([btn(t("btn_orders", lang), "nav:orders", emoji_name="orders"),
                  btn(t("terms_title", lang), "nav:terms", emoji_name="terms")])
-    rows.append(home_row(lang))
-    return View.of(m, kb(*rows), poster=config.BANNER_SUPPORT)
+    rows.append([btn(t("btn_home", lang), "nav:home", emoji_name="back",
+                     style="primary")])
+    return View.of(m, kb(*rows), poster=store.poster("BANNER_SUPPORT"))
 
 
 # ─── PROFILE ──────────────────────────────────────────────────
@@ -710,7 +734,7 @@ def profile(user_rec: dict, lang: str) -> View:
          btn(t("btn_orders", lang), "nav:orders", emoji_name="orders")],
         [btn(t("btn_language", lang), "nav:language", emoji_name="language")],
         home_row(lang),
-    ), poster=config.BANNER_PROFILE)
+    ), poster=store.poster("BANNER_PROFILE"))
 
 
 # ─── LANGUAGE ─────────────────────────────────────────────────
@@ -792,7 +816,7 @@ def force_join(lang: str) -> View:
                          url=config.FORCE_JOIN_LINK, emoji_name="link",
                          style="success")])
     rows.append([btn(t("btn_joined", lang), "nav:joined", emoji_name="ok")])
-    return View.of(m, kb(*rows), poster=config.BANNER_START)
+    return View.of(m, kb(*rows), poster=store.poster("BANNER_START"))
 
 
 def banned(lang: str, reason: str) -> View:

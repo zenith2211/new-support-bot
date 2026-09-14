@@ -101,10 +101,12 @@ def main() -> int:
         check_view(f"pay_methods [{lang}]",
                    screens.pay_methods(product, lang, 1, 0.0, 1.5), loud)
         check_view(f"wallet [{lang}]", screens.wallet(record, lang), loud)
-        check_view(f"topup_amounts [{lang}]",
-                   screens.topup_amounts(lang, 0.0), loud)
         check_view(f"topup_methods [{lang}]",
-                   screens.topup_methods(lang, 5.0), loud)
+                   screens.topup_methods(lang, 0.0), loud)
+        check_view(f"topup_methods+amount [{lang}]",
+                   screens.topup_methods(lang, 0.0, 5.0), loud)
+        check_view(f"topup_amounts [{lang}]",
+                   screens.topup_amounts(lang, 0.0, "binance"), loud)
         check_view(f"orders [{lang}]",
                    screens.orders(user["id"], lang), loud)
         check_view(f"gift [{lang}]", screens.gift(lang, 0.0), loud)

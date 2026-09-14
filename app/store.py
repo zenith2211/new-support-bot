@@ -155,6 +155,18 @@ def support_url() -> str:
     return f"https://t.me/{username}" if username else ""
 
 
+def poster(slot: str) -> str:
+    """The image for a poster slot: whatever an admin set in the bot, else
+    the env var, else nothing (the screen is then sent as plain text).
+
+    `slot` is a config name like BANNER_START or POSTER_NEW_ORDER.
+    """
+    saved = setting(f"poster_{slot}")
+    if saved:
+        return str(saved)
+    return str(getattr(config, slot, "") or "")
+
+
 # ─── USERS ────────────────────────────────────────────────────
 def user_upsert(tg_user: dict) -> dict:
     uid = str(tg_user.get("id"))

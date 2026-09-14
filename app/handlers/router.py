@@ -76,6 +76,10 @@ async def on_message(message: dict):
 
     if ctx.is_admin:
         await commands.ensure_admin_menu(ctx.user_id, tg)
+        # A photo from an admin is a poster to install.
+        if message.get("photo"):
+            if await admin.capture_poster(ctx, message):
+                return
         # An admin forwarding a message that uses premium emoji is asking to
         # adopt those emoji — see admin.harvest_emoji.
         if message.get("forward_origin") or message.get("forward_from") \
@@ -137,9 +141,9 @@ async def _on_command(ctx: Ctx, text: str):
             if amount is None:
                 await error(ctx, "err_bad_number", alert=False)
                 return
-            await account.topup_amount(ctx, amount)
+            await account.topup_with_amount(ctx, amount)
             return
-        await send_new(ctx, screens.topup_amounts(ctx.lang, ctx.balance))
+        await send_new(ctx, screens.topup_methods(ctx.lang, ctx.balance))
     elif command in ("orders", "order"):
         await send_new(ctx, screens.orders(ctx.user_id, ctx.lang))
     elif command in ("gift", "giftcode", "redeem"):
@@ -188,7 +192,7 @@ async def _on_prompt(ctx: Ctx, prompt: dict, text: str,
         await shop_flow.on_coupon_text(ctx, data.get("pid", ""), text)
         return True
     if mode == "topup":
-        await account.on_topup_text(ctx, text)
+        await account.on_topup_text(ctx, text, data.get("method", ""))
         return True
     if mode == "gift":
         await account.redeem_gift(ctx, text)
@@ -336,14 +340,18 @@ async def _route_callback(ctx: Ctx, data: str):
 
     if head == "wm":
         parts = rest.split(":")
-        if len(parts) < 2:
+        method = parts[0] if parts else ""
+        if not method:
             await error(ctx, "err_not_found")
+            return
+        if len(parts) == 1:                  # method chosen, amount next
+            await account.topup_pick_amount(ctx, method)
             return
         amount = util.parse_amount(parts[1])
         if amount is None:
             await error(ctx, "err_bad_number")
             return
-        await account.topup_method(ctx, parts[0], amount)
+        await account.topup_method(ctx, method, amount)
         return
 
     if head == "paid":
@@ -412,21 +420,14 @@ async def _wallet_route(ctx: Ctx, rest: str):
     if rest == "top":
         await account.topup_menu(ctx)
         return
-    if rest == "topc":
-        await account.topup_custom(ctx)
+    if rest == "topc" or rest.startswith("topc:"):
+        await account.topup_custom(ctx, rest[5:] if ":" in rest else "")
         return
     if rest == "hist":
         await account.history(ctx)
         return
     if rest == "tr":
         await account.transfer_prompt(ctx)
-        return
-    if rest.startswith("top:"):
-        amount = util.parse_amount(rest[4:])
-        if amount is None:
-            await error(ctx, "err_bad_number")
-            return
-        await account.topup_amount(ctx, amount)
         return
     await toast(ctx)
 

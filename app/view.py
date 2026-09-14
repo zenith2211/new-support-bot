@@ -23,9 +23,13 @@ SEND_BUTTON_STYLES = config._env_bool("BUTTON_STYLES", True)
 # button's emoji comes from its label text, which works everywhere.
 SEND_BUTTON_ICONS = config._env_bool("BUTTON_ICONS", False)
 
-STYLE_PRIMARY = "primary"
-STYLE_SUCCESS = "success"
-STYLE_DANGER = "danger"
+# The only values Telegram accepts. Anything else is rejected outright on a
+# KeyboardButton ("Invalid button style"), so keep this list closed.
+STYLE_PRIMARY = "primary"      # blue on reply keyboards, teal on inline ones
+STYLE_SUCCESS = "success"      # green
+STYLE_DANGER = "danger"        # red
+STYLE_DEFAULT = "default"      # the normal dark button
+STYLES = (STYLE_PRIMARY, STYLE_SUCCESS, STYLE_DANGER, STYLE_DEFAULT)
 
 
 @dataclass
@@ -64,7 +68,7 @@ def btn(text: str, data: str | None = None, url: str | None = None,
     if emoji_name and SEND_BUTTON_ICONS and emo.premium_id(emoji_name):
         b["text"] = text
         b["icon_custom_emoji_id"] = emo.premium_id(emoji_name)
-    if style and SEND_BUTTON_STYLES:
+    if style and SEND_BUTTON_STYLES and style in STYLES:
         b["style"] = style
     return b
 
@@ -85,9 +89,26 @@ def kb(*rows) -> dict:
 
 
 # ─── REPLY (PERSISTENT) KEYBOARD ──────────────────────────────
-def reply_kb(labels: list, placeholder: str = "") -> dict:
+def reply_kb(labels: list, placeholder: str = "",
+             style: str | None = STYLE_PRIMARY) -> dict:
+    """The persistent keyboard. `style` colours every button:
+    primary renders blue, success green, danger red, default/None dark.
+
+    Verified against the live API — unlike inline buttons, Telegram
+    *validates* this field on KeyboardButton and rejects unknown values, so
+    only the four names above are safe.
+    """
+    if not SEND_BUTTON_STYLES:
+        style = None
+
+    def cell(text: str) -> dict:
+        button = {"text": text}
+        if style:
+            button["style"] = style
+        return button
+
     return {
-        "keyboard": [[{"text": cell} for cell in row] for row in labels],
+        "keyboard": [[cell(text) for text in row] for row in labels],
         "resize_keyboard": True,
         "is_persistent": True,
         "input_field_placeholder": placeholder or None,

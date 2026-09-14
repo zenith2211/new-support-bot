@@ -7,7 +7,8 @@ language, help and terms.
 
 import logging
 
-from .. import broadcast, config, screens, shop, state, store, tg, util
+from .. import broadcast, config, payments, screens, shop, state, store, tg, \
+    util
 from ..lang import LANGS, lang_name, t
 from ..view import btn, kb
 from .base import Ctx, error, send_new, show, toast
@@ -64,24 +65,23 @@ async def wallet(ctx: Ctx):
 
 
 async def topup_menu(ctx: Ctx):
+    """Add funds, step 1: pick the payment method (matching the reference
+    flow, where the method is chosen before the amount)."""
     await toast(ctx)
-    await show(ctx, screens.topup_amounts(ctx.lang, ctx.balance))
+    await show(ctx, screens.topup_methods(ctx.lang, ctx.balance))
 
 
-async def topup_amount(ctx: Ctx, amount: float):
-    if amount < store.min_topup():
-        await error(ctx, "topup_too_small",
-                    min=util.fmt_money(store.min_topup()))
-        return
-    if amount > config.MAX_TOPUP:
-        await error(ctx, "topup_too_big", max=util.fmt_money(config.MAX_TOPUP))
+async def topup_pick_amount(ctx: Ctx, method_key: str):
+    """Add funds, step 2: pick the amount for the chosen method."""
+    if not payments.get(method_key):
+        await error(ctx, "pay_none")
         return
     await toast(ctx)
-    await show(ctx, screens.topup_methods(ctx.lang, amount))
+    await show(ctx, screens.topup_amounts(ctx.lang, ctx.balance, method_key))
 
 
-async def topup_custom(ctx: Ctx):
-    state.set_prompt(ctx.user_id, "topup")
+async def topup_custom(ctx: Ctx, method_key: str = ""):
+    state.set_prompt(ctx.user_id, "topup", method=method_key)
     await toast(ctx)
     await show(ctx, screens.simple(
         "plus", ctx.s("topup_title"), ctx.s("topup_custom_prompt"), ctx.lang,
@@ -89,25 +89,50 @@ async def topup_custom(ctx: Ctx):
     ))
 
 
-async def on_topup_text(ctx: Ctx, text: str):
-    amount = util.parse_amount(text)
+def _amount_error(ctx: Ctx, amount: float | None) -> str:
     if amount is None or amount <= 0:
-        await error(ctx, "err_bad_number", alert=False)
-        return
+        return "err_bad_number"
     if amount < store.min_topup():
-        await error(ctx, "topup_too_small", alert=False,
-                    min=util.fmt_money(store.min_topup()))
-        return
+        return "topup_too_small"
     if amount > config.MAX_TOPUP:
-        await error(ctx, "topup_too_big", alert=False,
+        return "topup_too_big"
+    return ""
+
+
+async def on_topup_text(ctx: Ctx, text: str, method_key: str = ""):
+    amount = util.parse_amount(text)
+    problem = _amount_error(ctx, amount)
+    if problem:
+        await error(ctx, problem, alert=False,
+                    min=util.fmt_money(store.min_topup()),
                     max=util.fmt_money(config.MAX_TOPUP))
         return
     state.clear_prompt(ctx.user_id)
-    await send_new(ctx, screens.topup_methods(ctx.lang, amount))
+    if method_key and payments.get(method_key):
+        await pay_flow.start_topup(ctx, method_key, amount)
+        return
+    await send_new(ctx, screens.topup_methods(ctx.lang, ctx.balance))
 
 
 async def topup_method(ctx: Ctx, method_key: str, amount: float):
+    problem = _amount_error(ctx, amount)
+    if problem:
+        await error(ctx, problem,
+                    min=util.fmt_money(store.min_topup()),
+                    max=util.fmt_money(config.MAX_TOPUP))
+        return
     await pay_flow.start_topup(ctx, method_key, amount)
+
+
+async def topup_with_amount(ctx: Ctx, amount: float):
+    """`/topup 5` — amount known, method still to pick."""
+    problem = _amount_error(ctx, amount)
+    if problem:
+        await error(ctx, problem, alert=False,
+                    min=util.fmt_money(store.min_topup()),
+                    max=util.fmt_money(config.MAX_TOPUP))
+        return
+    await send_new(ctx, screens.topup_methods(ctx.lang, ctx.balance, amount))
 
 
 async def history(ctx: Ctx):

@@ -111,10 +111,14 @@ class Msg:
             self.text(emo.DIVIDER).nl()
         return self
 
+    def bar(self) -> "Msg":
+        """The ▎ accent prefix, as an emoji slot so it can animate."""
+        return self.emoji("bar")
+
     def bar_header(self, title: str, trailing_emoji: str | None = None,
                    divider: bool = True) -> "Msg":
         """`▎TITLE 🔥` style header used by the channel posts."""
-        self.text(emo.BAR).bold(title)
+        self.bar().bold(title)
         if trailing_emoji:
             self.space().emoji(trailing_emoji)
         self.nl()

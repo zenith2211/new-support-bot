@@ -650,12 +650,19 @@ STRINGS = {
         "vi": "{n} giao dịch gần nhất của bạn. Chạm để mở.",
     },
     "orders_empty": {
-        "en": "No orders yet. Open Products to make your first one.",
-        "bn": "এখনো কোনো অর্ডার নেই। প্রথমটি করতে Products খুলুন।",
-        "hi": "अभी कोई ऑर्डर नहीं। पहला ऑर्डर करने के लिए Products खोलें।",
-        "ru": "Заказов пока нет. Откройте «Товары», чтобы сделать первый.",
-        "zh": "暂无订单。打开商品即可下第一单。",
-        "vi": "Chưa có đơn nào. Mở Sản phẩm để đặt đơn đầu tiên.",
+        "en": "You have no orders yet.\nOpen Products, pick an item, and pay "
+              "from Wallet. Delivered codes and files will show here.",
+        "bn": "আপনার এখনো কোনো অর্ডার নেই।\nProducts খুলে একটি আইটেম বেছে "
+              "ওয়ালেট থেকে পেমেন্ট করুন। ডেলিভারি হওয়া কোড ও ফাইল এখানে "
+              "দেখা যাবে।",
+        "hi": "आपका अभी कोई ऑर्डर नहीं है।\nProducts खोलें, आइटम चुनें और "
+              "वॉलेट से भुगतान करें। डिलीवर हुए कोड और फाइलें यहाँ दिखेंगी।",
+        "ru": "Заказов пока нет.\nОткройте «Товары», выберите товар и "
+              "оплатите с кошелька. Выданные коды и файлы появятся здесь.",
+        "zh": "你还没有订单。\n打开商品、选择一件并用钱包付款。已交付的"
+              "卡密和文件会显示在这里。",
+        "vi": "Bạn chưa có đơn nào.\nMở Sản phẩm, chọn một món và trả bằng "
+              "Ví. Mã và tệp đã giao sẽ hiện ở đây.",
     },
     "order_title": {
         "en": "Order", "bn": "অর্ডার", "hi": "ऑर्डर",
@@ -723,13 +730,21 @@ STRINGS = {
         "ru": "Подарочный код", "zh": "礼品码", "vi": "Mã quà tặng",
     },
     "gift_intro": {
-        "en": "Send the gift code in this chat and the value lands in your "
-              "wallet.",
-        "bn": "এই চ্যাটে গিফট কোড পাঠান, টাকা সোজা আপনার ওয়ালেটে যাবে।",
-        "hi": "इस चैट में गिफ्ट कोड भेजें, राशि सीधे आपके वॉलेट में आएगी।",
-        "ru": "Отправьте подарочный код в чат — сумма зачислится на кошелёк.",
-        "zh": "在此聊天发送礼品码，金额会进入你的钱包。",
-        "vi": "Gửi mã quà tặng vào chat, giá trị sẽ vào ví của bạn.",
+        "en": "Send your gift code as the next message.\nIf it is valid, "
+              "credit is added to this wallet immediately. Used or unknown "
+              "codes are rejected.",
+        "bn": "পরের মেসেজেই আপনার গিফট কোড পাঠান।\nকোড ঠিক থাকলে সাথে সাথেই "
+              "এই ওয়ালেটে টাকা যোগ হবে। ব্যবহৃত বা ভুল কোড গ্রহণ করা হবে না।",
+        "hi": "अगले संदेश में अपना गिफ्ट कोड भेजें।\nकोड सही हो तो राशि तुरंत "
+              "इस वॉलेट में जुड़ जाएगी। इस्तेमाल हो चुके या गलत कोड अस्वीकार "
+              "होंगे।",
+        "ru": "Отправьте подарочный код следующим сообщением.\nЕсли он "
+              "действителен, сумма сразу зачислится на кошелёк. "
+              "Использованные и неизвестные коды отклоняются.",
+        "zh": "请在下一条消息中发送礼品码。\n有效则立即入账到此钱包。"
+              "已使用或无效的码会被拒绝。",
+        "vi": "Gửi mã quà tặng của bạn ở tin nhắn tiếp theo.\nNếu hợp lệ, "
+              "tiền vào ví ngay. Mã đã dùng hoặc không hợp lệ sẽ bị từ chối.",
     },
     "gift_send_now": {
         "en": "Send the code now — it looks like GIFT-A1B2C3D4.",
@@ -847,18 +862,38 @@ STRINGS = {
         "en": "Support", "bn": "সাপোর্ট", "hi": "सपोर्ट",
         "ru": "Поддержка", "zh": "客服", "vi": "Hỗ trợ",
     },
+    "support_contact": {
+        "en": "Contact", "bn": "যোগাযোগ", "hi": "संपर्क",
+        "ru": "Контакт", "zh": "联系", "vi": "Liên hệ",
+    },
+    "support_chat": {
+        "en": "Chat", "bn": "চ্যাট", "hi": "चैट",
+        "ru": "Чат", "zh": "聊天", "vi": "Chat",
+    },
+    "support_keep": {
+        "en": "Keep your messages in this bot when you can — it is easier to "
+              "match your account.",
+        "bn": "যতটা সম্ভব এই বটেই মেসেজ রাখুন — আপনার অ্যাকাউন্ট মেলানো সহজ হয়।",
+        "hi": "हो सके तो संदेश इसी बॉट में रखें — आपका खाता मिलाना आसान होता है।",
+        "ru": "По возможности пишите в этом боте — так проще найти ваш аккаунт.",
+        "zh": "尽量在本机器人内沟通 — 更容易核对你的账户。",
+        "vi": "Hãy nhắn trong bot này khi có thể — dễ đối chiếu tài khoản hơn.",
+    },
     "support_intro": {
-        "en": "Payment stuck, item missing or a warranty problem — send your "
-              "order id and a screenshot.",
-        "bn": "পেমেন্ট আটকে আছে, আইটেম পাননি বা ওয়ারেন্টি সমস্যা — অর্ডার "
-              "আইডি ও স্ক্রিনশট পাঠান।",
-        "hi": "भुगतान अटका, आइटम नहीं मिला या वारंटी समस्या — ऑर्डर आईडी और "
-              "स्क्रीनशॉट भेजें।",
-        "ru": "Платёж застрял, товар не пришёл или вопрос по гарантии — "
-              "пришлите номер заказа и скриншот.",
-        "zh": "付款卡住、商品未收到或保障问题 — 请发送订单号和截图。",
-        "vi": "Thanh toán bị treo, thiếu hàng hay bảo hành — gửi mã đơn và "
-              "ảnh chụp.",
+        "en": "Use this for unpaid invoices, missing delivery, or a wrong "
+              "item. Include your order or invoice code so we can find it "
+              "quickly.",
+        "bn": "পেমেন্ট হয়নি, ডেলিভারি পাননি বা ভুল আইটেম পেলে এখানে লিখুন। "
+              "দ্রুত খুঁজে পেতে অর্ডার বা ইনভয়েস কোড দিন।",
+        "hi": "बिना भुगतान वाला इनवॉइस, डिलीवरी न मिलना या गलत आइटम — इसका "
+              "उपयोग करें। जल्दी ढूँढने के लिए ऑर्डर या इनवॉइस कोड दें।",
+        "ru": "Пишите сюда про неоплаченный счёт, недоставленный или "
+              "неверный товар. Укажите номер заказа или счёта, чтобы мы "
+              "нашли его быстрее.",
+        "zh": "未付款的订单、未收到的交付或错误商品都可在此反馈。"
+              "请附上订单号或账单号，便于我们快速查找。",
+        "vi": "Dùng mục này cho hoá đơn chưa trả, hàng chưa nhận hoặc sai "
+              "món. Kèm mã đơn hoặc mã hoá đơn để tìm nhanh hơn.",
     },
     "support_hours": {
         "en": "Replies usually come within a few hours.",
