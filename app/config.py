@@ -7,10 +7,58 @@ is missing, and simply hides a feature when its own config is blank
 (e.g. no BINANCE_PAY_KEY -> Binance Pay button is not shown).
 """
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 # ─── PATHS ────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+# ─── .env ─────────────────────────────────────────────────────
+def load_env_file(path: str = "") -> int:
+    """Read KEY=VALUE lines from a .env file into the environment.
+
+    A real environment variable always wins, so `BOT_TOKEN=x python bot.py`
+    still overrides the file. Done by hand rather than with python-dotenv to
+    keep the dependency list at aiohttp.
+    """
+    path = path or os.environ.get("ENV_FILE") or os.path.join(BASE_DIR, ".env")
+    if not os.path.exists(path):
+        return 0
+
+    loaded = 0
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line[7:].lstrip()
+                key, sep, value = line.partition("=")
+                if not sep:
+                    continue
+                key = key.strip()
+                value = value.strip()
+                # strip one layer of matching quotes, then trailing comments
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                    value = value[1:-1]
+                elif " #" in value:
+                    value = value.split(" #", 1)[0].strip()
+                if key and key not in os.environ:
+                    os.environ[key] = value
+                    loaded += 1
+    except OSError as exc:
+        logger.warning("could not read %s: %s", path, exc)
+        return 0
+    return loaded
+
+
+ENV_LOADED = load_env_file()
+ENV_FILE_PATH = os.environ.get("ENV_FILE") or os.path.join(BASE_DIR, ".env")
+
 DATA_DIR = os.environ.get("DATA_DIR") or os.path.join(BASE_DIR, "data")
 
 
@@ -117,6 +165,9 @@ BINANCE_PAY_ID = _env("BINANCE_PAY_ID")
 
 # ─── RUNTIME ──────────────────────────────────────────────────
 PORT = _env_int("PORT", 10000)
+# 0.0.0.0 is what cloud hosts need. Set 127.0.0.1 to keep the HTTP server
+# reachable only from this machine when running locally.
+HTTP_HOST = _env("HTTP_HOST", "0.0.0.0")
 POLL_TIMEOUT = _env_int("POLL_TIMEOUT", 30)
 LOG_LEVEL = _env("LOG_LEVEL", "INFO").upper()
 

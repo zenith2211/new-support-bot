@@ -9,7 +9,7 @@ Everything is configured with environment variables — no tokens, keys, ids or
 links are in the code. A fresh clone with only `BOT_TOKEN` and `ADMIN_IDS`
 set is fully browsable.
 
-## Quick start
+## Run it on your own machine
 
 ```bash
 pip install -r requirements.txt
@@ -17,14 +17,26 @@ cp .env.example .env     # fill in BOT_TOKEN and ADMIN_IDS at minimum
 python bot.py
 ```
 
-On Windows without a `.env` loader, set the variables in the shell first:
+`.env` is read at startup, so that is the whole setup. A real environment
+variable still wins, which keeps `BOT_TOKEN=... python bot.py` and cloud
+dashboards working unchanged.
 
-```bash
-BOT_TOKEN=123:abc ADMIN_IDS=111222333 python bot.py
-```
+Or just run **`start.bat`** (Windows, double-clickable) / **`./start.sh`**
+(macOS, Linux, Git Bash). They install dependencies, check `.env` exists, and
+restart the bot if it crashes — Ctrl+C stops it for good.
 
 Send `/id` to the bot to learn your numeric id, put it in `ADMIN_IDS`,
 restart, then `/admin` opens the panel.
+
+**A localhost bot is a real bot.** The bot long-polls Telegram, so it needs no
+public URL, no port forwarding and no tunnel — it works behind any router.
+Two consequences of running at home: it is only online while the process is
+(use Task Scheduler / `launchd` / a systemd unit for always-on), and
+`data/` lives on this disk, so back that folder up — it holds your users,
+orders, balances and codes.
+
+`HTTP_HOST=127.0.0.1` in `.env` keeps the built-in HTTP server reachable from
+this machine only. Cloud hosts need `0.0.0.0`, which is the default.
 
 The first run seeds a demo catalog (six categories, six products) so you can
 see the storefront immediately. Delete those categories from

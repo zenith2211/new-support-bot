@@ -8,6 +8,7 @@ abandoned invoices and sweeps stale conversation state.
 
 import asyncio
 import logging
+import os
 import sys
 
 from aiohttp import web
@@ -140,9 +141,12 @@ async def start_http() -> web.AppRunner:
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", config.PORT)
+    site = web.TCPSite(runner, config.HTTP_HOST, config.PORT)
     await site.start()
-    logger.info("http listening on :%s", config.PORT)
+    shown = "localhost" if config.HTTP_HOST in ("127.0.0.1", "localhost") \
+        else config.HTTP_HOST
+    logger.info("http listening on http://%s:%s  (/health, /api/catalog)",
+                shown, config.PORT)
     return runner
 
 
@@ -188,11 +192,18 @@ async def announce_start():
 async def main():
     setup_logging()
 
+    if config.ENV_LOADED:
+        logger.info("loaded %d setting(s) from %s",
+                    config.ENV_LOADED, config.ENV_FILE_PATH)
+    elif not os.path.exists(config.ENV_FILE_PATH):
+        logger.info("no .env at %s — reading the environment only",
+                    config.ENV_FILE_PATH)
+
     problems = config.missing_required()
     if problems:
         for problem in problems:
             logger.error("config: %s", problem)
-        logger.error("Set the variables above (see .env.example) and restart.")
+        logger.error("Copy .env.example to .env and fill it in, then restart.")
         return 1
 
     store.init()
