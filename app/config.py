@@ -123,6 +123,10 @@ SUPPORT_USERNAME = _env("SUPPORT_USERNAME")      # without @
 CHANNEL_LINK = _env("CHANNEL_LINK")
 CURRENCY = _env("CURRENCY", "USD")
 
+# Master switch for every poster image. Off by default: the storefront is
+# text-only, and no stored file_id or env var below can override that.
+POSTERS = _env_bool("POSTERS", False)
+
 # Poster images shown above messages. Any of these may be:
 #   * an https:// URL
 #   * a Telegram file_id

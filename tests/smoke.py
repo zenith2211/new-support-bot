@@ -32,7 +32,7 @@ if "storebot-smoke-" not in _DATA_DIR and not os.environ.get("ALLOW_LIVE_DATA"):
         "temp dir, or set ALLOW_LIVE_DATA=1 if you really mean it.\n")
     raise SystemExit(2)
 
-from app import broadcast, commands, emoji as emo, poster, screens, \
+from app import broadcast, commands, emoji as emo, screens, \
     shop, store, util                                         # noqa: E402
 from app.lang import LANGS, STRINGS, t                        # noqa: E402
 from app.msg import u16                                       # noqa: E402
@@ -213,40 +213,39 @@ def main() -> int:
     if missing:
         fail("lang", f"no English text for: {', '.join(missing)}")
 
-    # ── generated posters ─────────────────────────────────────
-    if poster.AVAILABLE:
-        path = poster.generate(product, "Test Store")
-        if not path or not os.path.exists(path):
-            fail("poster", "generate() produced no file")
-        else:
-            size = os.path.getsize(path)
-            if size < 8000:
-                fail("poster", f"only {size} bytes — probably blank")
-            from PIL import Image
-            with Image.open(path) as img:
-                if img.size != (poster.WIDTH, poster.HEIGHT):
-                    fail("poster", f"size is {img.size}")
-                # a real banner is not one flat colour
-                if len(img.convert("RGB").getcolors(maxcolors=200000) or
-                       [1] * 2) < 50:
-                    fail("poster", "image looks flat/blank")
-            os.unlink(path)
-
-        # a pathological product must not crash the generator
-        weird = dict(product, name="X" * 300, warranty="", sku="", price=0)
-        path = poster.generate(weird, "Test Store")
-        if not path:
-            fail("poster", "long-name product produced nothing")
-        else:
-            os.unlink(path)
-
-        path = poster.generate_banner("Wallet", "Top up once", seed="w")
-        if not path:
-            fail("poster", "generate_banner produced nothing")
-        else:
-            os.unlink(path)
-    else:
-        print("note: Pillow missing — poster generation not checked")
+    # ── posters stay off unless POSTERS=1 ─────────────────────
+    # Nothing — not a stored file_id, not an env var, not a product image —
+    # may put an image back while the master switch is off.
+    from app import config as config_mod
+    if not config_mod.POSTERS:
+        store.set_setting("poster_BANNER_START", "SOME-STALE-FILE-ID")
+        store.product_save("pspot1", image="ANOTHER-STALE-FILE-ID")
+        try:
+            leaked = [
+                name for name, view in (
+                    ("start", screens.start(user, "en")),
+                    ("categories", screens.categories("en")),
+                    ("category", screens.category(cat, "en")),
+                    ("product", screens.product(
+                        store.product_get("pspot1"), "en", 0.0)),
+                    ("wallet", screens.wallet(record, "en")),
+                    ("orders", screens.orders(user["id"], "en")),
+                    ("gift", screens.gift("en", 0.0)),
+                    ("support", screens.support("en")),
+                    ("profile", screens.profile(record, "en")),
+                )
+                if view.poster
+            ]
+            if leaked:
+                fail("posters", f"POSTERS is off but these carry an image: "
+                                f"{', '.join(leaked)}")
+            if store.poster("BANNER_START"):
+                fail("posters", "store.poster() returned a stale file_id")
+            if store.product_poster(store.product_get("pspot1")):
+                fail("posters", "store.product_poster() ignored the switch")
+        finally:
+            store.settings.delete("poster_BANNER_START")
+            store.product_save("pspot1", image="")
 
     # ── a mapped slot puts its emoji in the icon, not the label ──
     # With no emoji.json (as here, on a temp DATA_DIR) the prefix fallback is

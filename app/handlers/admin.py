@@ -9,9 +9,8 @@ to read.
 
 import asyncio
 import logging
-import os
 
-from .. import broadcast, config, emoji as emo, payments, poster, screens, \
+from .. import broadcast, config, emoji as emo, payments, screens, \
     store, tg, util
 from ..lang import t
 from ..msg import Msg
@@ -211,8 +210,6 @@ async def product_open(ctx: Ctx, pid: str):
              bold_value=False)
     m.kvline("ok", "Visible", "yes" if product.get("enabled", True) else "no",
              bold_value=False)
-    if product.get("image"):
-        m.emoji("link").space().text(util.clip(product["image"], 60)).nl()
     if product.get("description"):
         m.nl().italic(util.clip(product["description"], 300))
 
@@ -226,9 +223,6 @@ async def product_open(ctx: Ctx, pid: str):
              emoji_name="note"),
          btn("Delivery note", f"ad:prod:f:delivery_note:{pid}",
              emoji_name="delivery")],
-        [btn("Make poster", f"ad:posg:{pid}", emoji_name="link",
-             style="success"),
-         btn("Poster url", f"ad:prod:f:image:{pid}", emoji_name="link")],
         [btn("Emoji", f"ad:prod:f:emoji:{pid}", emoji_name="star")],
         [btn("Qty range", f"ad:prod:f:qty:{pid}", emoji_name="qty"),
          btn("Bulk rates", f"ad:prod:f:bulk:{pid}", emoji_name="chart")],
@@ -672,18 +666,6 @@ async def handle_callback(ctx: Ctx, rest: str) -> bool:
         await emoji_status(ctx)
         return True
 
-    if section == "posg":
-        await poster_generate(ctx, action if not arg else f"{action}:{arg}")
-        return True
-
-    if section == "pos":
-        await poster_assign(ctx, action if not arg else f"{action}:{arg}")
-        return True
-
-    if section == "posp":
-        await poster_to_product(ctx, action if not arg else f"{action}:{arg}")
-        return True
-
     if section == "ord" and action == "done":
         order = store.order_get(arg)
         if order:
@@ -758,135 +740,6 @@ async def emoji_status(ctx: Ctx):
         [btn("Re-check", "ad:emoji", emoji_name="refresh")],
         _back_row(),
     )))
-
-
-# ─── POSTER CAPTURE ───────────────────────────────────────────
-async def capture_poster(ctx: Ctx, message: dict) -> bool:
-    """Turn a photo an admin sent or forwarded into a usable poster.
-
-    Telegram file_ids are per-bot, but a photo delivered *to* this bot is
-    usable by it forever — so this is all the setup a poster needs. The photo
-    is offered as a banner for any screen, or as one product's image.
-    """
-    photos = message.get("photo") or []
-    if not photos:
-        return False
-
-    # Largest size last; that is the one worth keeping.
-    file_id = photos[-1].get("file_id")
-    if not file_id:
-        return False
-
-    from .. import state
-    state.set_prompt(ctx.user_id, "ad_poster_target", file_id=file_id)
-
-    m = Msg()
-    m.header("link", "Poster received")
-    m.text("Where should this image go?").nl(2)
-    m.emoji("warn").space()
-    m.italic("If the image carries another store's logo or watermark, use "
-             "your own artwork instead — otherwise you are advertising "
-             "them inside your bot.")
-
-    rows = [
-        [btn("Start screen", "ad:pos:BANNER_START", emoji_name="home"),
-         btn("Products", "ad:pos:BANNER_PRODUCTS", emoji_name="products")],
-        [btn("Wallet", "ad:pos:BANNER_WALLET", emoji_name="wallet"),
-         btn("Orders", "ad:pos:BANNER_ORDERS", emoji_name="orders")],
-        [btn("Gift code", "ad:pos:BANNER_GIFT", emoji_name="gift"),
-         btn("Support", "ad:pos:BANNER_SUPPORT", emoji_name="support")],
-        [btn("New order post", "ad:pos:POSTER_NEW_ORDER",
-             emoji_name="broadcast"),
-         btn("Wallet funded post", "ad:pos:POSTER_WALLET_FUNDED",
-             emoji_name="money")],
-        [btn("Almost gone post", "ad:pos:POSTER_ALMOST_GONE",
-             emoji_name="fire"),
-         btn("Delivered", "ad:pos:POSTER_DELIVERED", emoji_name="ok")],
-        [btn("A product", "ad:pos:product", emoji_name="box",
-             style="primary")],
-        [btn("Cancel", "ad:home", emoji_name="no", style="danger")],
-    ]
-    text, entities = m.build()
-    await tg.send_message(ctx.chat_id, text, entities, kb(*rows))
-    return True
-
-
-async def poster_assign(ctx: Ctx, target: str):
-    """Save the pending poster to a banner slot or to a product."""
-    from .. import state
-    prompt = state.get_prompt(ctx.user_id)
-    if not prompt or prompt["mode"] not in ("ad_poster_target",):
-        await toast(ctx, "No poster pending — send the photo again",
-                    alert=True)
-        return
-    file_id = prompt["data"].get("file_id", "")
-
-    if target == "product":
-        state.set_prompt(ctx.user_id, "ad_poster_product", file_id=file_id)
-        everything = sorted(store.products.values(),
-                            key=lambda p: str(p.get("name") or ""))
-        rows = [[btn(util.clip(p.get("name"), 34), f"ad:posp:{p['id']}",
-                     emoji_name=p.get("emoji") or "box")]
-                for p in everything[:20]]
-        rows.append([btn("Cancel", "ad:home", emoji_name="no")])
-        m = Msg()
-        m.header("box", "Which product?")
-        m.text("The poster shows above that product's detail screen.")
-        await show(ctx, View.of(m, kb(*rows)))
-        return
-
-    store.set_setting(f"poster_{target}", file_id)
-    state.clear_prompt(ctx.user_id)
-    m = Msg()
-    m.header("ok", "Poster saved")
-    m.kvline("link", "Slot", target)
-    m.nl().italic("It is live now — open that screen to see it. Send another "
-                  "photo to set a different slot.")
-    await show(ctx, View.of(m, kb(_back_row())))
-
-
-async def poster_generate(ctx: Ctx, pid: str):
-    """Draw a banner for this product from its own data and install it."""
-    product = store.product_get(pid)
-    if not product:
-        await toast(ctx, "Gone", alert=True)
-        return
-    if not poster.AVAILABLE:
-        await toast(ctx, "Pillow is not installed on the server", alert=True)
-        return
-
-    await toast(ctx, "Drawing…")
-    path = poster.generate(product, store.store_name())
-    if not path:
-        await toast(ctx, "Could not draw that one", alert=True)
-        return
-
-    # Upload once; keep the file_id Telegram gives back.
-    data = await tg.send_photo(ctx.chat_id, path, "")
-    try:
-        os.unlink(path)
-    except OSError:
-        pass
-
-    sizes = (data.get("result") or {}).get("photo") or []
-    if not sizes:
-        await toast(ctx, "Upload failed", alert=True)
-        return
-    store.product_save(pid, image=sizes[-1]["file_id"])
-    await product_open(ctx, pid)
-
-
-async def poster_to_product(ctx: Ctx, pid: str):
-    from .. import state
-    prompt = state.get_prompt(ctx.user_id)
-    file_id = (prompt or {}).get("data", {}).get("file_id", "")
-    if not file_id or not store.product_get(pid):
-        await toast(ctx, "No poster pending", alert=True)
-        return
-    store.product_save(pid, image=file_id)
-    state.clear_prompt(ctx.user_id)
-    await toast(ctx, "Poster saved")
-    await product_open(ctx, pid)
 
 
 # ─── PREMIUM EMOJI HARVEST ────────────────────────────────────
@@ -1037,7 +890,6 @@ async def _product_field_prompt(ctx: Ctx, field: str, pid: str):
         "price": "The new price, for example 1.5",
         "description": "The full description shown on the confirm screen",
         "delivery_note": "The short delivery note",
-        "image": "An https:// poster url, a Telegram file_id, or - to clear",
         "emoji": f"One emoji slot name, e.g. star, box, mail, key\n"
                  f"Available: {', '.join(sorted(emo.EMOJI)[:24])} …",
         "qty": "min | max, for example 1 | 5",
@@ -1313,9 +1165,6 @@ async def _apply_product_field(ctx: Ctx, pid: str, field: str, raw: str):
     if field == "emoji":
         if raw.strip() in emo.EMOJI:
             store.product_save(pid, emoji=raw.strip())
-        return
-    if field == "image":
-        store.product_save(pid, image="" if raw == "-" else raw)
         return
     if field in ("name", "description", "delivery_note"):
         store.product_save(pid, **{field: "" if raw == "-" else raw})

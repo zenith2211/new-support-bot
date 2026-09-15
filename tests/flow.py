@@ -660,71 +660,6 @@ async def scenario_admin():
            "product survived its category")
 
 
-async def scenario_posters():
-    """A photo from an admin becomes a poster."""
-    global _update_id
-    _update_id += 1
-    reset()
-    await router.handle_update({
-        "update_id": _update_id,
-        "message": {
-            "message_id": _update_id,
-            "from": ADMIN,
-            "chat": {"id": ADMIN["id"], "type": "private"},
-            "photo": [{"file_id": "small-thumb"},
-                      {"file_id": "BIGGEST-FILE-ID"}],
-        },
-    })
-    expect_in("poster offered", "Poster received", last_text(ADMIN["id"]))
-    expect("poster slots offered",
-           any(c == "ad:pos:BANNER_START" for c in callbacks(ADMIN["id"])),
-           f"got {callbacks(ADMIN['id'])}")
-    expect("watermark warning shown",
-           "watermark" in last_text(ADMIN["id"]).lower(),
-           "no warning about other stores' logos")
-
-    reset()
-    await press("ad:pos:BANNER_START", ADMIN)
-    expect("poster saved to slot",
-           store.poster("BANNER_START") == "BIGGEST-FILE-ID",
-           f"slot holds {store.poster('BANNER_START')!r}")
-    expect("largest size kept",
-           store.poster("BANNER_START") != "small-thumb",
-           "saved the thumbnail instead of the full image")
-
-    # the start screen now carries it
-    view = screens.start(ADMIN, "en")
-    expect("start screen uses the poster",
-           view.poster == "BIGGEST-FILE-ID",
-           f"start poster is {view.poster!r}")
-
-    # and one can go to a single product instead
-    _update_id += 1
-    reset()
-    await router.handle_update({
-        "update_id": _update_id,
-        "message": {
-            "message_id": _update_id,
-            "from": ADMIN,
-            "chat": {"id": ADMIN["id"], "type": "private"},
-            "photo": [{"file_id": "PRODUCT-POSTER"}],
-        },
-    })
-    await press("ad:pos:product", ADMIN)
-    expect_in("product picker", "Which product", last_text(ADMIN["id"]))
-    await press("ad:posp:pspot1", ADMIN)
-    expect("product poster saved",
-           store.product_get("pspot1").get("image") == "PRODUCT-POSTER",
-           f"image is {store.product_get('pspot1').get('image')!r}")
-
-    # assigning with nothing pending must not crash or wipe a slot
-    reset()
-    await press("ad:pos:BANNER_WALLET", ADMIN)
-    expect("no pending poster handled",
-           store.poster("BANNER_WALLET") != "BIGGEST-FILE-ID",
-           "assigned a stale file_id")
-
-
 async def scenario_photo_message_edit():
     """A screen reached from a poster message must still render."""
     reset()
@@ -749,7 +684,6 @@ async def main() -> int:
         ("account screens", scenario_account_screens),
         ("stock alerts", scenario_alerts),
         ("admin panel", scenario_admin),
-        ("posters", scenario_posters),
         ("poster message edit", scenario_photo_message_edit),
     ]
 

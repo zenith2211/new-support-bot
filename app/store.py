@@ -156,15 +156,27 @@ def support_url() -> str:
 
 
 def poster(slot: str) -> str:
-    """The image for a poster slot: whatever an admin set in the bot, else
-    the env var, else nothing (the screen is then sent as plain text).
+    """The image for a poster slot, or "" for a text-only screen.
+
+    Posters are off unless POSTERS=1. With them off this always returns
+    nothing, so no stored value or env var can put an image back — the whole
+    storefront stays text-only.
 
     `slot` is a config name like BANNER_START or POSTER_NEW_ORDER.
     """
+    if not config.POSTERS:
+        return ""
     saved = setting(f"poster_{slot}")
     if saved:
         return str(saved)
     return str(getattr(config, slot, "") or "")
+
+
+def product_poster(product: dict) -> str:
+    """A product's own image, honouring the same master switch."""
+    if not config.POSTERS:
+        return ""
+    return str(product.get("image") or "")
 
 
 # ─── USERS ────────────────────────────────────────────────────

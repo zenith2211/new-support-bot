@@ -124,41 +124,21 @@ The persistent menu uses `primary`, so it renders blue. Confirm actions are
 green and destructive ones red. Turn the whole thing off with
 `BUTTON_STYLES=0`.
 
-### Posters
+### Posters (off)
 
-**Generate them** — **/admin → product → Make poster** draws a 1280×720
-banner and installs it: dark base with a coloured bloom, the product's own
-emoji rendered in full colour on a glossy tile and lit podium, a headline
-with an accent word, a badge lifted out of the product name, a row of feature
-cards (delivery, warranty, payment, bulk) and a price pill.
+The storefront is text-only. `POSTERS` defaults to `0`, and while it is off
+`store.poster()` returns nothing — no stored `file_id`, env var or product
+image can put an image back, which is asserted in `tests/smoke.py`.
 
-The headline is split intelligently, so
-`Spotify Premium Account – 3 Months Access (7 Day Warranty)` becomes the
-headline *Spotify Premium Account*, subtitle *3 Months Access* and badge
-*7 DAY WARRANTY* instead of one unreadable line.
+To turn images back on, set `POSTERS=1` and give the slots something: the
+`BANNER_*` / `POSTER_*` env vars take an `https://` URL, a Telegram
+`file_id`, or a path to a file in the repo, and a product's `image` field
+overrides `BANNER_PRODUCTS` for its own screen.
 
-A product's `emoji` slot picks the hero graphic, so choose a fitting one —
-`music`, `brain`, `cloud`, `key`, `game`, `shield`, `crown`, `gem`, `bolt`,
-`video`, `camera`, `phone`, `monitor` are all available. Needs Pillow (in
-`requirements.txt`); without it the button reports itself unavailable and
-nothing else changes. The art comes from your own store data, so it carries
-your name and nobody else's.
-
-**Or bring your own** — send or forward any photo to the bot as an admin and
-it offers to install it: as the banner for a specific screen (start, products,
-wallet, orders, gift, support), as one of the channel-post images, or as a
-single product's image. A file_id received by your bot stays valid for it, so
-that is the whole setup — no image hosting needed.
-
-You can still set `BANNER_*` / `POSTER_*` env vars instead — each accepts an
-`https://` URL, a `file_id`, or a path to a file in the repo. Anything set
-in-bot takes precedence. Leave a slot empty and that screen is plain text.
-
-A screen whose text exceeds Telegram's 1024-character caption limit drops its
-poster automatically, so a long description never blocks a message.
-
-Don't install an image carrying another store's logo or watermark — the bot
-warns you about this, because it would advertise them inside your shop.
+Note a `file_id` belongs to the bot that uploaded it, so images do not
+survive a change of bot token — you would get
+`Bad Request: wrong file identifier` and the screen silently falls back to
+text.
 
 ## Commands
 

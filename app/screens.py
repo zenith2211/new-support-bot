@@ -294,7 +294,7 @@ def product(product_rec: dict, lang: str, balance: float,
     rows.append([btn(t("btn_back", lang), f"cat:{product_rec.get('cat_id')}",
                      emoji_name="back")])
 
-    poster = product_rec.get("image") or store.poster("BANNER_PRODUCTS")
+    poster = store.product_poster(product_rec) or store.poster("BANNER_PRODUCTS")
     return View.of(m, kb(*rows), poster=poster)
 
 

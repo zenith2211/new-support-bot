@@ -97,7 +97,7 @@ async def new_order(order: dict):
                        emoji_name="products")]) if link else None
 
     product = store.product_get(order.get("pid")) or {}
-    poster = product.get("image") or store.poster("POSTER_NEW_ORDER")
+    poster = store.product_poster(product) or store.poster("POSTER_NEW_ORDER")
     await _post(text, entities, keyboard, poster)
 
 
@@ -125,7 +125,7 @@ async def almost_gone(product: dict, count: int):
     keyboard = kb([btn(util.clip(product.get("name") or "—", 40), url=link,
                        emoji_name=product.get("emoji") or "box",
                        style="success")]) if link else None
-    poster = product.get("image") or store.poster("POSTER_ALMOST_GONE")
+    poster = store.product_poster(product) or store.poster("POSTER_ALMOST_GONE")
     await _post(text, entities, keyboard, poster)
 
 
@@ -151,7 +151,7 @@ async def restocked(product: dict, added: int):
     link = await _deep_link(f"p_{product.get('id')}")
     keyboard = kb([btn(t("btn_buy_now", lang), url=link,
                        emoji_name="products")]) if link else None
-    poster = product.get("image") or store.poster("POSTER_NEW_ORDER")
+    poster = store.product_poster(product) or store.poster("POSTER_NEW_ORDER")
     await _post(text, entities, keyboard, poster)
 
 
@@ -192,7 +192,7 @@ async def stock_alert(product: dict, added: int, total: int):
         [btn(t("btn_stop_alerts", lang), f"pa:{product.get('id')}",
              emoji_name="bell", style="danger")],
     )
-    poster = product.get("image") or store.poster("POSTER_NEW_ORDER")
+    poster = store.product_poster(product) or store.poster("POSTER_NEW_ORDER")
     await _post(text, entities, keyboard, poster)
 
 
@@ -220,7 +220,7 @@ async def price_update(product: dict, old_price: float):
     keyboard = kb([btn(t("btn_buy_now", lang), url=link,
                        emoji_name="products",
                        style="primary")]) if link else None
-    poster = product.get("image") or store.poster("POSTER_NEW_ORDER")
+    poster = store.product_poster(product) or store.poster("POSTER_NEW_ORDER")
     await _post(text, entities, keyboard, poster)
 
     sent = 0
