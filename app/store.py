@@ -908,34 +908,34 @@ _DEMO_CATEGORIES = [
 
 _DEMO_SPOTIFY_DESC = (
     "Get a full-access Spotify Premium account with a 3-month subscription.\n\n"
-    "✅ Duration: 3 Months\n"
-    "✅ Warranty: 7 Days\n"
-    "✅ Full Access Account\n\n"
+    "• Duration: 3 Months\n"
+    "• Warranty: 7 Days\n"
+    "• Full Access Account\n\n"
     "Account Format:\n"
     "Email | Email Password | Email Link | Spotify Password\n"
     "Email | Email Password | Backup Mail | Spotify Password\n\n"
     "Enjoy ad-free music, offline downloads, unlimited skips, "
-    "and premium features! 🎧"
+    "and premium features!"
 )
 
 _DEMO_PRODUCTS = [
     ("pgemin1", "cgemini", "Gemini Pro 1 Month (Own Mail)", "spark", 2.5,
      "Gemini Pro subscription activated on your own Google account.\n\n"
-     "✅ Duration: 1 Month\n✅ Warranty: 3 Days\n✅ Activated on your mail"),
+     "• Duration: 1 Month\n• Warranty: 3 Days\n• Activated on your mail"),
     ("picld1", "cicloud", "iCloud Mail Account – Fresh", "mail", 0.9,
      "Fresh iCloud mail account with full inbox access.\n\n"
-     "✅ Fresh & unused\n✅ Warranty: Login only"),
+     "• Fresh & unused\n• Warranty: Login only"),
     ("photm1", "choutlk", "HotMail/Outlook Account – Aged", "mail", 0.35,
      "Aged Outlook/HotMail account, ready for verification use.\n\n"
-     "✅ Aged domain\n✅ Warranty: Login only"),
+     "• Aged domain\n• Warranty: Login only"),
     ("pprox1", "cproxy", "CliProxy Residential 1 GB", "key", 3.0,
      "Residential proxy data for CliProxy.\n\n"
-     "✅ 1 GB data\n✅ Rotating residential IPs\n✅ Warranty: Data only"),
+     "• 1 GB data\n• Rotating residential IPs\n• Warranty: Data only"),
     ("pspot1", "cspoti", "Spotify Premium Account – 3 Months Access "
      "(7 Day Warranty)", "star", 1.5, _DEMO_SPOTIFY_DESC),
     ("pduol1", "cduolg", "Duolingo Super 1 Month", "box", 1.2,
      "Duolingo Super on your own account.\n\n"
-     "✅ Duration: 1 Month\n✅ Warranty: 3 Days"),
+     "• Duration: 1 Month\n• Warranty: 3 Days"),
 ]
 
 

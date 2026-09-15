@@ -27,6 +27,15 @@ os.environ.setdefault("MANUAL_PAY", "1")
 os.environ.setdefault("MANUAL_PAY_LABEL", "Pay manually")
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="storebot-flow-"))
 
+# Same guard as tests/smoke.py: this suite buys, credits, bans and deletes.
+_DATA_DIR = os.environ["DATA_DIR"]
+if "storebot-flow-" not in _DATA_DIR and not os.environ.get("ALLOW_LIVE_DATA"):
+    sys.stderr.write(
+        f"refusing to run against DATA_DIR={_DATA_DIR!r}\n"
+        "This suite writes test orders and balances. Unset DATA_DIR to use a\n"
+        "temp dir, or set ALLOW_LIVE_DATA=1 if you really mean it.\n")
+    raise SystemExit(2)
+
 from app import screens, store, tg                            # noqa: E402
 from app.handlers import router                                # noqa: E402
 

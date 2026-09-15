@@ -9,39 +9,51 @@ the wording and layout of the storefront all live in one place.
 from . import commands, config, emoji as emo, payments, store, util
 from .lang import LANGS, lang_flag, lang_name, t
 from .msg import Msg
-from .view import View, btn, kb, reply_kb
+from .view import View, btn, kb, reply_kb, reply_label_variants
 
 TOPUP_PRESETS = (1, 3, 5, 10, 25, 50)
 
 
 # ─── SHARED PIECES ────────────────────────────────────────────
+# (route, string key, emoji slot) for the persistent keyboard, in order.
+MENU = (
+    ("products", "btn_products", "products"),
+    ("wallet",   "btn_wallet",   "wallet"),
+    ("orders",   "btn_orders",   "orders"),
+    ("gift",     "btn_gift",     "gift"),
+    ("support",  "btn_support",  "support"),
+    ("profile",  "btn_profile",  "profile"),
+    ("language", "btn_language", "language"),
+)
+_MENU_BY_ROUTE = {route: (key, slot) for route, key, slot in MENU}
+
+
+def _cell(route: str, lang: str) -> tuple:
+    key, slot = _MENU_BY_ROUTE[route]
+    return t(key, lang), slot
+
+
 def main_reply_kb(lang: str) -> dict:
     return reply_kb(
         [
-            [f"{emo.char('products')} {t('btn_products', lang)}",
-             f"{emo.char('wallet')} {t('btn_wallet', lang)}"],
-            [f"{emo.char('orders')} {t('btn_orders', lang)}",
-             f"{emo.char('gift')} {t('btn_gift', lang)}"],
-            [f"{emo.char('support')} {t('btn_support', lang)}"],
-            [f"{emo.char('profile')} {t('btn_profile', lang)}",
-             f"{emo.char('language')} {t('btn_language', lang)}"],
+            [_cell("products", lang), _cell("wallet", lang)],
+            [_cell("orders", lang), _cell("gift", lang)],
+            [_cell("support", lang)],
+            [_cell("profile", lang), _cell("language", lang)],
         ],
         placeholder=t("products_tap", lang),
     )
 
 
 def reply_labels(lang: str) -> dict:
-    """{reply-keyboard label: route} for every supported language, so the
-    persistent buttons keep working after a language switch."""
+    """{reply-keyboard label: route} for every language and both label
+    spellings, so the persistent buttons keep working after a language
+    switch or a restart that toggled button icons."""
     routes = {}
     for code in LANGS:
-        routes[f"{emo.char('products')} {t('btn_products', code)}"] = "products"
-        routes[f"{emo.char('wallet')} {t('btn_wallet', code)}"] = "wallet"
-        routes[f"{emo.char('orders')} {t('btn_orders', code)}"] = "orders"
-        routes[f"{emo.char('gift')} {t('btn_gift', code)}"] = "gift"
-        routes[f"{emo.char('support')} {t('btn_support', code)}"] = "support"
-        routes[f"{emo.char('profile')} {t('btn_profile', code)}"] = "profile"
-        routes[f"{emo.char('language')} {t('btn_language', code)}"] = "language"
+        for route, key, slot in MENU:
+            for variant in reply_label_variants(t(key, code), slot):
+                routes[variant] = route
     return routes
 
 

@@ -19,9 +19,13 @@ from .msg import Msg
 # just show the default colour.
 SEND_BUTTON_STYLES = config._env_bool("BUTTON_STYLES", True)
 
-# icon_custom_emoji_id is NOT verified — left off by default. With it off, a
-# button's emoji comes from its label text, which works everywhere.
-SEND_BUTTON_ICONS = config._env_bool("BUTTON_ICONS", False)
+# Animated emoji *inside* the button chrome, instead of a plain emoji baked
+# into the label text. Verified real: Telegram ignores made-up button fields
+# ("icon_bogus" is accepted) but rejects a malformed value of this one with
+# `can't parse KeyboardButton: Field "icon_custom_emoji_id"`, which it would
+# only do for a field it parses. Note it does *not* check the id exists at
+# send time, so emoji.audit() pruning dead ids matters here.
+SEND_BUTTON_ICONS = config._env_bool("BUTTON_ICONS", True)
 
 # The only values Telegram accepts. Anything else is rejected outright on a
 # KeyboardButton ("Invalid button style"), so keep this list closed.
@@ -89,30 +93,46 @@ def kb(*rows) -> dict:
 
 
 # ─── REPLY (PERSISTENT) KEYBOARD ──────────────────────────────
-def reply_kb(labels: list, placeholder: str = "",
+def reply_kb(rows: list, placeholder: str = "",
              style: str | None = STYLE_PRIMARY) -> dict:
-    """The persistent keyboard. `style` colours every button:
-    primary renders blue, success green, danger red, default/None dark.
+    """The persistent keyboard.
 
-    Verified against the live API — unlike inline buttons, Telegram
-    *validates* this field on KeyboardButton and rejects unknown values, so
-    only the four names above are safe.
+    Each cell is `(label, emoji_slot)` or a bare label string. With button
+    icons on, the emoji rides in the button's icon field and the label stays
+    plain text; with them off it is prefixed to the label so the look
+    survives. `style` colours every button: primary blue, success green,
+    danger red, default/None dark.
     """
     if not SEND_BUTTON_STYLES:
         style = None
 
-    def cell(text: str) -> dict:
-        button = {"text": text}
+    def cell(spec) -> dict:
+        label, slot = spec if isinstance(spec, (tuple, list)) else (spec, None)
+        eid = emo.premium_id(slot) if slot else None
+
+        if slot and SEND_BUTTON_ICONS and eid:
+            button = {"text": label, "icon_custom_emoji_id": eid}
+        elif slot:
+            button = {"text": f"{emo.char(slot)} {label}"}
+        else:
+            button = {"text": label}
         if style:
             button["style"] = style
         return button
 
     return {
-        "keyboard": [[cell(text) for text in row] for row in labels],
+        "keyboard": [[cell(spec) for spec in row] for row in rows],
         "resize_keyboard": True,
         "is_persistent": True,
         "input_field_placeholder": placeholder or None,
     }
+
+
+def reply_label_variants(label: str, slot: str) -> list:
+    """Both spellings of a persistent-keyboard label — plain and
+    emoji-prefixed — so routing keeps working whichever form was sent, and
+    across a restart that flipped BUTTON_ICONS."""
+    return [label, f"{emo.char(slot)} {label}"]
 
 
 def remove_reply_kb() -> dict:

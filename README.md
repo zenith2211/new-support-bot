@@ -83,6 +83,22 @@ Every customer gets a stable, shareable **Customer ID** (`#CX-201566`) that
 reveals nothing about their Telegram account. Wallet → Transfer sends balance
 to another customer by that ID, and both sides get a confirmation.
 
+### Animated emoji on buttons
+
+Buttons carry their emoji in `icon_custom_emoji_id` rather than baked into the
+label text, so the animated emoji appears inside the button chrome and no
+plain emoji is left in the label. Verified real: Telegram *ignores* invented
+button fields (`icon_bogus` is accepted) but rejects a malformed value of
+this one with `can't parse KeyboardButton: Field "icon_custom_emoji_id"` —
+something it only does for a field it parses.
+
+It does **not** check the id exists at send time, so a stale id renders as
+nothing. That is why `emoji.audit()` prunes dead ids at startup.
+
+A slot with no premium id falls back to prefixing the label with its plain
+character, so nothing disappears on a bot with no `data/emoji.json`. Disable
+with `BUTTON_ICONS=0`.
+
 ### Coloured buttons
 
 Buttons carry a `style` field. Verified against the live API — Telegram
@@ -247,6 +263,10 @@ No network, no token needed:
 python -m tests.smoke   # renders every screen in every language
 python -m tests.flow    # drives updates through the router with a faked API
 ```
+
+Both suites refuse to run against a real `DATA_DIR` — they buy products,
+credit wallets and ban users, so pointing them at live data would corrupt it.
+Unset `DATA_DIR` (they use a temp dir) or pass `ALLOW_LIVE_DATA=1` knowingly.
 
 `smoke` checks caption/text limits, entity offsets and `callback_data` size
 for ~140 views and prints each screen so you can eyeball the layout (`-q` to

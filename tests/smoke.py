@@ -21,6 +21,17 @@ os.environ.setdefault("STORE_NAME", "ToolBox Store Bot")
 os.environ.setdefault("SUPPORT_USERNAME", "your_support")
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="storebot-smoke-"))
 
+# This suite buys products, credits wallets and creates codes. Pointed at a
+# real DATA_DIR it would corrupt live users, orders and stock — so refuse
+# unless the directory is obviously a throwaway.
+_DATA_DIR = os.environ["DATA_DIR"]
+if "storebot-smoke-" not in _DATA_DIR and not os.environ.get("ALLOW_LIVE_DATA"):
+    sys.stderr.write(
+        f"refusing to run against DATA_DIR={_DATA_DIR!r}\n"
+        "This suite writes test orders and balances. Unset DATA_DIR to use a\n"
+        "temp dir, or set ALLOW_LIVE_DATA=1 if you really mean it.\n")
+    raise SystemExit(2)
+
 from app import broadcast, commands, emoji as emo, poster, screens, \
     shop, store, util                                         # noqa: E402
 from app.lang import LANGS, STRINGS, t                        # noqa: E402
@@ -236,6 +247,35 @@ def main() -> int:
             os.unlink(path)
     else:
         print("note: Pillow missing — poster generation not checked")
+
+    # ── a mapped slot puts its emoji in the icon, not the label ──
+    # With no emoji.json (as here, on a temp DATA_DIR) the prefix fallback is
+    # correct, so this only asserts the rule for slots that *are* mapped.
+    from app import view as view_mod
+    kb = screens.main_reply_kb("en")
+    cells = [b for row in kb["keyboard"] for b in row]
+    if len(cells) != len(screens.MENU):
+        fail("buttons", f"{len(cells)} menu buttons, expected "
+                        f"{len(screens.MENU)}")
+    for (_route, key, slot), button in zip(screens.MENU, cells):
+        mapped = bool(emo.premium_id(slot))
+        has_icon = "icon_custom_emoji_id" in button
+        plain = any(ord(ch) > 0x2000 for ch in button["text"])
+        if view_mod.SEND_BUTTON_ICONS and mapped:
+            if not has_icon:
+                fail("buttons", f"{slot} is mapped but carries no icon id")
+            if plain:
+                fail("buttons",
+                     f"{slot} has both an icon and a plain emoji in "
+                     f"{button['text']!r}")
+        elif not plain:
+            fail("buttons", f"{slot} has neither an icon nor a plain emoji")
+    # routing must survive either label spelling
+    routes = screens.reply_labels("en")
+    for route, key, slot in screens.MENU:
+        for variant in view_mod.reply_label_variants(t(key, "en"), slot):
+            if routes.get(variant) != route:
+                fail("buttons", f"label {variant!r} does not route to {route}")
 
     # ── emoji integrity ───────────────────────────────────────
     for slot, char_text in emo.EMOJI.items():
