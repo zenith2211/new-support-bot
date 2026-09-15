@@ -113,6 +113,42 @@ def _json(value) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+#: Set once we learn whether Telegram lets this bot use custom emoji.
+#: None = not yet observed, True/False = confirmed by a real send.
+CUSTOM_EMOJI_ALLOWED: bool | None = None
+_custom_emoji_warned = False
+
+
+def note_custom_emoji_result(sent: list, result: dict):
+    """Detect Telegram silently dropping our custom emoji.
+
+    Per the Bot API docs, custom emoji entities "can only be used by bots
+    that purchased additional usernames on Fragment or in the messages
+    directly sent by the bot ... if the owner of the bot has a Telegram
+    Premium subscription". A bot without that privilege gets no error: the
+    message is accepted and the entities are quietly stripped, so the only
+    way to notice is to compare what came back.
+    """
+    global CUSTOM_EMOJI_ALLOWED, _custom_emoji_warned
+    asked = [e for e in (sent or []) if e.get("type") == "custom_emoji"]
+    if not asked:
+        return
+    echoed = (result.get("entities") or result.get("caption_entities") or [])
+    kept = [e for e in echoed if e.get("type") == "custom_emoji"]
+
+    CUSTOM_EMOJI_ALLOWED = bool(kept)
+    if not kept and not _custom_emoji_warned:
+        _custom_emoji_warned = True
+        logger.warning(
+            "Telegram stripped all %d custom emoji from a message: this bot "
+            "is not allowed to use them, so every emoji arrives as plain "
+            "unicode. Per the Bot API, custom emoji need either a username "
+            "purchased for the bot on Fragment, or the bot's OWNER (the "
+            "account that created it in @BotFather) to have Telegram "
+            "Premium. Nothing in this code can work around it.",
+            len(asked))
+
+
 def _is_entity_error(data: dict) -> bool:
     desc = str(data.get("description", "")).upper()
     return any(
@@ -170,6 +206,8 @@ async def send_message(chat_id, text: str, entities: list | None = None,
     if not data.get("ok") and _is_entity_error(data) and entities:
         payload["entities"] = strip_entities(entities) or None
         data = await api("sendMessage", payload)
+    if data.get("ok"):
+        note_custom_emoji_result(entities, data.get("result") or {})
     return data
 
 
@@ -195,6 +233,8 @@ async def send_photo(chat_id, poster: str, caption: str = "",
                              files={"photo": _poster_path(poster)})
         else:
             data = await api("sendPhoto", {**payload, "photo": poster})
+    if data.get("ok"):
+        note_custom_emoji_result(entities, data.get("result") or {})
     return data
 
 

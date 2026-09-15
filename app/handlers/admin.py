@@ -733,10 +733,26 @@ async def emoji_status(ctx: Ctx):
         m.emoji("warn").space().bold(f"Still plain ({len(missing)})").nl()
         m.text(", ".join(f"{s} {emo.EMOJI[s]}" for s in missing)).nl(2)
 
-    m.italic("If the icons above do not move, they are installed correctly "
-             "but your client is not animating them — check Telegram "
-             "Settings > Stickers and Emoji, and note that Windows battery "
-             "saver pauses animation.")
+    allowed = tg.CUSTOM_EMOJI_ALLOWED
+    if allowed is False:
+        m.emoji("ban").space().bold("Telegram is stripping them").nl()
+        m.text("This bot is not permitted to send custom emoji, so every "
+               "one above arrives as plain unicode. The Bot API allows them "
+               "only for a bot that either:").nl()
+        m.text("• has a username purchased for it on Fragment, or").nl()
+        m.text("• is owned by an account with Telegram Premium — the "
+               "account that created it in @BotFather.").nl(2)
+        m.italic("No code change can work around this. Give the owner "
+                 "account Premium, or create the bot from an account that "
+                 "already has it, and these start working immediately.")
+    elif allowed is True:
+        m.emoji("ok").space().italic(
+            "Telegram is keeping the custom emoji, so they render. If they "
+            "do not visibly move, that is your client's animation setting.")
+    else:
+        m.italic("Send /start once, then re-check — the bot learns whether "
+                 "Telegram accepts custom emoji from the first message it "
+                 "sends with them.")
 
     await show(ctx, View.of(m, kb(
         [btn("Re-check", "ad:emoji", emoji_name="refresh")],

@@ -222,6 +222,28 @@ English rather than failing, so you can add a language incrementally in
 
 ## Premium (animated) emoji
 
+> **Your bot probably cannot send these.** Per the Bot API: *"Custom emoji
+> entities can only be used by bots that purchased additional usernames on
+> Fragment or in the messages directly sent by the bot to private, group and
+> supergroup chats if the owner of the bot has a Telegram Premium
+> subscription."*
+>
+> A bot without that privilege gets **no error**. Telegram accepts the
+> message and silently removes the entities, so every emoji arrives as plain
+> unicode and the only symptom is "my emoji don't animate". This bot detects
+> it — the first message containing custom emoji compares what came back, logs
+> a warning, and **/admin → Emoji** says so plainly.
+>
+> Two ways to unlock it, neither of them code:
+> 1. Give the **owner account** (whichever account created the bot in
+>    @BotFather) Telegram Premium — the recipient's Premium status is
+>    irrelevant.
+> 2. Buy an additional username for the bot on Fragment.
+>
+> Until then the plain unicode fallback is what customers see, and it looks
+> fine — it is what every non-Premium-owned store bot shows.
+
+
 The UI uses named emoji slots, each with a plain unicode fallback. Map a slot
 to a premium custom emoji and it animates for Premium users; everyone else
 sees the same plain character.
