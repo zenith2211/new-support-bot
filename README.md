@@ -234,6 +234,10 @@ English rather than failing, so you can add a language incrementally in
 > it — the first message containing custom emoji compares what came back, logs
 > a warning, and **/admin → Emoji** says so plainly.
 >
+> `python -m tools.switch_bot <token>` tests any token for this before you
+> commit to it, and `--write` then updates `.env`. Your catalog, posters,
+> users and orders live in `data/`, so a new bot inherits all of them.
+>
 > Two ways to unlock it, neither of them code:
 > 1. Give the **owner account** (whichever account created the bot in
 >    @BotFather) Telegram Premium — the recipient's Premium status is
