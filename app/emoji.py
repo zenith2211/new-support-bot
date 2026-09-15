@@ -85,7 +85,7 @@ EMOJI = {
     "user":       "\U0001F465",   # 👥
     "id":         "\U0001F4C7",   # 📇
     "clipboard":  "\U0001F4CB",   # 📋
-    "chart":      "\U0001F30A",   # 🌊 volume/bulk, matching the storefront
+    "chart":      "\U0001F4CA",   # 📊 bulk/volume rate
     "admin":      "⚙",       # ⚙
     "link":       "\U0001F517",   # 🔗
     "mail":       "\U0001F4E7",   # 📧

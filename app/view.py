@@ -19,19 +19,17 @@ from .msg import Msg
 # just show the default colour.
 SEND_BUTTON_STYLES = config._env_bool("BUTTON_STYLES", True)
 
-# Animated emoji *inside* the button chrome. OFF, because it does not work.
+# Animated emoji *inside* the button chrome, with a bare text label.
 #
-# The API parses the field — it rejects a malformed value with
-# `can't parse KeyboardButton: Field "icon_custom_emoji_id"` — but Telegram
-# Desktop 7.1.4 renders nothing for it, leaving a bare text button. Worse
-# than the fallback, which is why this stays off: a button's emoji comes from
-# its label text, which works on every client.
+# This needs the same privilege as custom emoji in message text: the bot must
+# have a Fragment username, or be owned by a Telegram Premium account. On a
+# bot without it the field is accepted and silently ignored, leaving a button
+# with no emoji at all — which is why it was off while this project ran on an
+# unprivileged bot, and why it renders correctly now that it does not.
 #
-# Buttons are the one place a custom emoji cannot go. KeyboardButton and
-# InlineKeyboardButton carry plain text with no entity list, so there is
-# nowhere to attach a custom_emoji entity. Message text is unaffected — that
-# is where all the animated emoji live.
-SEND_BUTTON_ICONS = config._env_bool("BUTTON_ICONS", False)
+# With it off, the emoji is prefixed to the label instead, which works on any
+# bot. Set BUTTON_ICONS=0 to force that.
+SEND_BUTTON_ICONS = config._env_bool("BUTTON_ICONS", True)
 
 # The only values Telegram accepts. Anything else is rejected outright on a
 # KeyboardButton ("Invalid button style"), so keep this list closed.

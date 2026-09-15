@@ -83,19 +83,29 @@ Every customer gets a stable, shareable **Customer ID** (`#CX-201566`) that
 reveals nothing about their Telegram account. Wallet → Transfer sends balance
 to another customer by that ID, and both sides get a confirmation.
 
-### Buttons cannot carry animated emoji
+### Animated emoji on buttons
 
-Worth knowing, because it looks like a bug otherwise. `KeyboardButton` and
-`InlineKeyboardButton` hold plain text with no entity list, so there is
-nowhere to attach a `custom_emoji` entity — a button's emoji can only be a
-character in its label.
+Buttons put their emoji in `icon_custom_emoji_id` and keep a bare text
+label, so the animated icon sits in the button chrome.
 
-There *is* an `icon_custom_emoji_id` field, and the API parses it (a
-malformed value is rejected by name). But Telegram Desktop 7.1.4 renders
-nothing for it, leaving a bare text button — worse than the fallback. So
-`BUTTON_ICONS` defaults to **0** and buttons keep the emoji in their label.
+This needs the **same privilege as custom emoji in message text** — a
+Fragment username, or a Premium-owned bot. Without it the field is accepted
+and silently ignored, leaving a button with *no* emoji at all, which is worse
+than not using it. `BUTTON_ICONS` defaults on; set it to `0` to force the
+label-prefix fallback, which works on any bot.
 
-Animated emoji work everywhere else: all message text goes through entities.
+### Picking emoji that actually look right
+
+An id's `emoji` field says which character it stands for, but **nothing
+guarantees the artwork matches**. Themed packs are the trap: a gifts pack
+registers gift-box art under assorted characters, and a logo pack served the
+Reddit mark for 👤. Metadata alone will not catch this.
+
+`app/handlers/admin.py` therefore prefers icon-style packs (`UI_Icons`,
+`OutlineEmoji`, `FinanceEmoji`, `NewsEmoji`) over themed ones. When a slot
+still looks wrong, download the sticker's thumbnail via `getFile` and look at
+it — that is the only reliable check. A slot with no good artwork is better
+left unmapped: the plain system glyph is clean and correct.
 
 ### Coloured buttons
 
