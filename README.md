@@ -235,8 +235,15 @@ English rather than failing, so you can add a language incrementally in
 > a warning, and **/admin → Emoji** says so plainly.
 >
 > `python -m tools.switch_bot <token>` tests any token for this before you
-> commit to it, and `--write` then updates `.env`. Your catalog, posters,
-> users and orders live in `data/`, so a new bot inherits all of them.
+> commit to it, and `--write` then updates `.env`.
+>
+> **Moving to a new bot? Re-upload the posters.** A Telegram `file_id`
+> belongs to the bot that uploaded it, so every stored poster breaks with a
+> new token (`Bad Request: wrong file identifier`). The screens degrade to
+> text rather than failing, but regenerate them: **/admin → product → Make
+> poster** per product, or re-run your banner install. Everything else in
+> `data/` — catalog, users, orders, balances, codes — carries over untouched,
+> and emoji ids are global so `data/emoji.json` needs nothing.
 >
 > Two ways to unlock it, neither of them code:
 > 1. Give the **owner account** (whichever account created the bot in
