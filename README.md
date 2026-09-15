@@ -98,11 +98,10 @@ unavailable. The art is generated from your store's data, so it carries your
 name and nobody else's.
 
 **Or bring your own** — send or forward any photo to the bot as an admin and
-it offers to install it:
-as the banner for a specific screen (start, products, wallet, orders, gift,
-support), as one of the channel-post images, or as a single product's image.
-A file_id received by your bot is usable by it permanently, so that is the
-whole setup.
+it offers to install it: as the banner for a specific screen (start, products,
+wallet, orders, gift, support), as one of the channel-post images, or as a
+single product's image. A file_id received by your bot stays valid for it, so
+that is the whole setup — no image hosting needed.
 
 You can still set `BANNER_*` / `POSTER_*` env vars instead — each accepts an
 `https://` URL, a `file_id`, or a path to a file in the repo. Anything set
