@@ -97,6 +97,21 @@ EMOJI = {
     "trash":      "\U0001F5D1",   # 🗑
     "edit":       "✏",       # ✏
     "dot":        "•",       # • (a bullet, deliberately never an emoji)
+
+    # product-flavour slots — pick one of these as a product's emoji and it
+    # becomes the hero graphic on its generated poster
+    "music":      "\U0001F3B5",   # 🎵
+    "video":      "\U0001F3AC",   # 🎬
+    "game":       "\U0001F3AE",   # 🎮
+    "brain":      "\U0001F9E0",   # 🧠
+    "cloud":      "☁",       # ☁
+    "shield":     "\U0001F6E1",   # 🛡
+    "bolt":       "⚡",       # ⚡
+    "camera":     "\U0001F4F8",   # 📸
+    "phone":      "\U0001F4F1",   # 📱
+    "monitor":    "\U0001F5A5",   # 🖥
+    "crown":      "\U0001F451",   # 👑
+    "gem":        "\U0001F48E",   # 💎
 }
 
 # Filled from data/emoji.json at import time.

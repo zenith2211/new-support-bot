@@ -90,12 +90,23 @@ green and destructive ones red. Turn the whole thing off with
 
 ### Posters
 
-**Generate them** — **/admin → product → Make poster** draws a banner from
-that product's own data (name, price, warranty, bulk tiers, SKU) on a dark
-gradient with an accent glow, uploads it, and installs it. Needs Pillow
-(in `requirements.txt`); without it the button just reports that it is
-unavailable. The art is generated from your store's data, so it carries your
-name and nobody else's.
+**Generate them** — **/admin → product → Make poster** draws a 1280×720
+banner and installs it: dark base with a coloured bloom, the product's own
+emoji rendered in full colour on a glossy tile and lit podium, a headline
+with an accent word, a badge lifted out of the product name, a row of feature
+cards (delivery, warranty, payment, bulk) and a price pill.
+
+The headline is split intelligently, so
+`Spotify Premium Account – 3 Months Access (7 Day Warranty)` becomes the
+headline *Spotify Premium Account*, subtitle *3 Months Access* and badge
+*7 DAY WARRANTY* instead of one unreadable line.
+
+A product's `emoji` slot picks the hero graphic, so choose a fitting one —
+`music`, `brain`, `cloud`, `key`, `game`, `shield`, `crown`, `gem`, `bolt`,
+`video`, `camera`, `phone`, `monitor` are all available. Needs Pillow (in
+`requirements.txt`); without it the button reports itself unavailable and
+nothing else changes. The art comes from your own store data, so it carries
+your name and nobody else's.
 
 **Or bring your own** — send or forward any photo to the bot as an admin and
 it offers to install it: as the banner for a specific screen (start, products,

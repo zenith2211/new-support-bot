@@ -61,6 +61,9 @@ async def api(method: str, payload: dict | None = None,
         try:
             session = await get_session()
             if files:
+                # Read the bytes up front and close the handles. Handing an
+                # open file to FormData leaks the descriptor, which on Windows
+                # means the caller cannot delete its own temp file afterwards.
                 form = aiohttp.FormData()
                 for key, value in payload.items():
                     form.add_field(
@@ -68,16 +71,18 @@ async def api(method: str, payload: dict | None = None,
                         value if isinstance(value, str) else _json(value),
                     )
                 for key, path in files.items():
-                    form.add_field(
-                        key,
-                        open(path, "rb"),
-                        filename=os.path.basename(path),
-                    )
+                    with open(path, "rb") as fh:
+                        blob = fh.read()
+                    form.add_field(key, blob,
+                                   filename=os.path.basename(path))
                 async with session.post(url, data=form) as resp:
                     data = await resp.json(content_type=None)
             else:
                 async with session.post(url, json=payload) as resp:
                     data = await resp.json(content_type=None)
+        except OSError as exc:
+            logger.warning("%s could not read upload: %s", method, exc)
+            return {"ok": False, "description": str(exc)}
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             if attempt == 2:
                 logger.warning("%s network error: %s", method, exc)
