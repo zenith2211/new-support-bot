@@ -170,7 +170,17 @@ async def announce_start():
     logger.info("running as @%s (%s)", me.get("username"), me.get("id"))
     logger.info("admins: %s", config.ADMINS or "none configured")
     logger.info("gateways: %s", [m.key for m in payments.available()] or "none")
-    logger.info("premium emoji slots loaded: %d", len(emo.PREMIUM))
+    report = await emo.audit(tg)
+    if report["animated"] < 0:
+        logger.info("premium emoji slots loaded: %d (not verified)",
+                    len(emo.PREMIUM))
+    else:
+        logger.info(
+            "premium emoji: %d slots, %d ids (%d animated, %d static)%s",
+            len(emo.PREMIUM), report["total"], report["animated"],
+            report["static"],
+            f", dropped {report['dropped']} dead" if report["dropped"] else "",
+        )
     if not config.LOG_CHANNEL_ID:
         logger.info("LOG_CHANNEL_ID unset — channel posts are off")
 

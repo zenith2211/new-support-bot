@@ -90,7 +90,15 @@ green and destructive ones red. Turn the whole thing off with
 
 ### Posters
 
-Send or forward any photo to the bot as an admin and it offers to install it:
+**Generate them** — **/admin → product → Make poster** draws a banner from
+that product's own data (name, price, warranty, bulk tiers, SKU) on a dark
+gradient with an accent glow, uploads it, and installs it. Needs Pillow
+(in `requirements.txt`); without it the button just reports that it is
+unavailable. The art is generated from your store's data, so it carries your
+name and nobody else's.
+
+**Or bring your own** — send or forward any photo to the bot as an admin and
+it offers to install it:
 as the banner for a specific screen (start, products, wallet, orders, gift,
 support), as one of the channel-post images, or as a single product's image.
 A file_id received by your bot is usable by it permanently, so that is the
@@ -196,9 +204,18 @@ replies with how many slots are live and which are still plain.
 { "products": "5355193051193059834", "wallet": "5447453226498552490" }
 ```
 
-Slot names are the keys of `EMOJI` in `app/emoji.py`. A bad id can never make
-a message fail to send: the send is retried without custom-emoji entities, so
-the message still arrives with plain emoji.
+Slot names are the keys of `EMOJI` in `app/emoji.py`.
+
+**/admin → Emoji** reports how many slots are mapped, how many ids are
+animated vs static, which sets they come from, and prints a live sample line.
+Use it to tell "not installed" apart from "installed but my client isn't
+animating them".
+
+Two safety nets matter here. A bad id can never make a message fail to send —
+the send is retried without custom-emoji entities. And because Telegram
+rejects a whole message if *any* id in it is invalid (which would silently
+strip every emoji in the bot), startup audits the map against
+`getCustomEmojiStickers` and drops dead ids before they can do that.
 
 ## Tests
 

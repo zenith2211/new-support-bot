@@ -9,8 +9,10 @@ to read.
 
 import asyncio
 import logging
+import os
 
-from .. import broadcast, config, emoji as emo, payments, screens, store, tg, util
+from .. import broadcast, config, emoji as emo, payments, poster, screens, \
+    store, tg, util
 from ..lang import t
 from ..msg import Msg
 from ..view import View, btn, kb
@@ -71,7 +73,8 @@ def _panel_view() -> View:
         [btn("Users", "ad:user", emoji_name="user"),
          btn("Broadcast", "ad:bc", emoji_name="broadcast")],
         [btn("Settings", "ad:set", emoji_name="edit"),
-         btn("Refresh", "ad:home", emoji_name="refresh")],
+         btn("Emoji", "ad:emoji", emoji_name="star")],
+        [btn("Refresh", "ad:home", emoji_name="refresh")],
         [btn("Close", "nav:close", emoji_name="close", style="danger")],
     ))
 
@@ -223,8 +226,10 @@ async def product_open(ctx: Ctx, pid: str):
              emoji_name="note"),
          btn("Delivery note", f"ad:prod:f:delivery_note:{pid}",
              emoji_name="delivery")],
-        [btn("Poster", f"ad:prod:f:image:{pid}", emoji_name="link"),
-         btn("Emoji", f"ad:prod:f:emoji:{pid}", emoji_name="star")],
+        [btn("Make poster", f"ad:posg:{pid}", emoji_name="link",
+             style="success"),
+         btn("Poster url", f"ad:prod:f:image:{pid}", emoji_name="link")],
+        [btn("Emoji", f"ad:prod:f:emoji:{pid}", emoji_name="star")],
         [btn("Qty range", f"ad:prod:f:qty:{pid}", emoji_name="qty"),
          btn("Bulk rates", f"ad:prod:f:bulk:{pid}", emoji_name="chart")],
         [btn("Stock mode", f"ad:prod:f:stock_mode:{pid}",
@@ -663,6 +668,14 @@ async def handle_callback(ctx: Ctx, rest: str) -> bool:
             await settings_menu(ctx)
         return True
 
+    if section == "emoji":
+        await emoji_status(ctx)
+        return True
+
+    if section == "posg":
+        await poster_generate(ctx, action if not arg else f"{action}:{arg}")
+        return True
+
     if section == "pos":
         await poster_assign(ctx, action if not arg else f"{action}:{arg}")
         return True
@@ -686,6 +699,49 @@ async def handle_callback(ctx: Ctx, rest: str) -> bool:
         return True
 
     return False
+
+
+# ─── EMOJI STATUS ─────────────────────────────────────────────
+async def emoji_status(ctx: Ctx):
+    """What is mapped, whether it animates, and a live sample to look at."""
+    report = await emo.audit(tg)
+    missing = [slot for slot in emo.EMOJI if slot not in emo.PREMIUM]
+
+    m = Msg()
+    m.header("star", "Premium emoji")
+    m.kvline("ok", "Slots mapped", f"{len(emo.PREMIUM)} / {len(emo.EMOJI)}")
+    if report["animated"] >= 0:
+        m.kvline("chart", "Unique ids", report["total"])
+        m.kvline("party", "Animated", report["animated"])
+        m.kvline("warn", "Static", report["static"])
+        if report["dropped"]:
+            m.kvline("trash", "Dead ids removed", report["dropped"])
+    m.nl()
+
+    m.bold("Live sample — every icon below is a custom emoji:").nl()
+    for slot in ("products", "wallet", "money", "stock", "sold", "sku",
+                 "delivery", "party", "fire", "rocket", "key", "ok"):
+        m.emoji(slot).space()
+    m.nl(2)
+
+    if report["sets"]:
+        m.bold("Emoji sets in use").nl()
+        for name in sorted(report["sets"])[:10]:
+            m.text("• ").code(name).nl()
+        m.nl()
+    if missing:
+        m.emoji("warn").space().bold(f"Still plain ({len(missing)})").nl()
+        m.text(", ".join(f"{s} {emo.EMOJI[s]}" for s in missing)).nl(2)
+
+    m.italic("If the icons above do not move, they are installed correctly "
+             "but your client is not animating them — check Telegram "
+             "Settings > Stickers and Emoji, and note that Windows battery "
+             "saver pauses animation.")
+
+    await show(ctx, View.of(m, kb(
+        [btn("Re-check", "ad:emoji", emoji_name="refresh")],
+        _back_row(),
+    )))
 
 
 # ─── POSTER CAPTURE ───────────────────────────────────────────
@@ -771,6 +827,37 @@ async def poster_assign(ctx: Ctx, target: str):
     m.nl().italic("It is live now — open that screen to see it. Send another "
                   "photo to set a different slot.")
     await show(ctx, View.of(m, kb(_back_row())))
+
+
+async def poster_generate(ctx: Ctx, pid: str):
+    """Draw a banner for this product from its own data and install it."""
+    product = store.product_get(pid)
+    if not product:
+        await toast(ctx, "Gone", alert=True)
+        return
+    if not poster.AVAILABLE:
+        await toast(ctx, "Pillow is not installed on the server", alert=True)
+        return
+
+    await toast(ctx, "Drawing…")
+    path = poster.generate(product, store.store_name())
+    if not path:
+        await toast(ctx, "Could not draw that one", alert=True)
+        return
+
+    # Upload once; keep the file_id Telegram gives back.
+    data = await tg.send_photo(ctx.chat_id, path, "")
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+    sizes = (data.get("result") or {}).get("photo") or []
+    if not sizes:
+        await toast(ctx, "Upload failed", alert=True)
+        return
+    store.product_save(pid, image=sizes[-1]["file_id"])
+    await product_open(ctx, pid)
 
 
 async def poster_to_product(ctx: Ctx, pid: str):

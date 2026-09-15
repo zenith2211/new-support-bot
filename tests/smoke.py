@@ -21,7 +21,8 @@ os.environ.setdefault("STORE_NAME", "ToolBox Store Bot")
 os.environ.setdefault("SUPPORT_USERNAME", "your_support")
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="storebot-smoke-"))
 
-from app import broadcast, commands, screens, shop, store, util   # noqa: E402
+from app import broadcast, commands, emoji as emo, poster, screens, \
+    shop, store, util                                         # noqa: E402
 from app.lang import LANGS, STRINGS, t                        # noqa: E402
 from app.msg import u16                                       # noqa: E402
 from app.tg import CAPTION_LIMIT, TEXT_LIMIT                  # noqa: E402
@@ -200,6 +201,54 @@ def main() -> int:
                if isinstance(value, dict) and "en" not in value]
     if missing:
         fail("lang", f"no English text for: {', '.join(missing)}")
+
+    # ── generated posters ─────────────────────────────────────
+    if poster.AVAILABLE:
+        path = poster.generate(product, "Test Store")
+        if not path or not os.path.exists(path):
+            fail("poster", "generate() produced no file")
+        else:
+            size = os.path.getsize(path)
+            if size < 8000:
+                fail("poster", f"only {size} bytes — probably blank")
+            from PIL import Image
+            with Image.open(path) as img:
+                if img.size != (poster.WIDTH, poster.HEIGHT):
+                    fail("poster", f"size is {img.size}")
+                # a real banner is not one flat colour
+                if len(img.convert("RGB").getcolors(maxcolors=200000) or
+                       [1] * 2) < 50:
+                    fail("poster", "image looks flat/blank")
+            os.unlink(path)
+
+        # a pathological product must not crash the generator
+        weird = dict(product, name="X" * 300, warranty="", sku="", price=0)
+        path = poster.generate(weird, "Test Store")
+        if not path:
+            fail("poster", "long-name product produced nothing")
+        else:
+            os.unlink(path)
+
+        path = poster.generate_banner("Wallet", "Top up once", seed="w")
+        if not path:
+            fail("poster", "generate_banner produced nothing")
+        else:
+            os.unlink(path)
+    else:
+        print("note: Pillow missing — poster generation not checked")
+
+    # ── emoji integrity ───────────────────────────────────────
+    for slot, char_text in emo.EMOJI.items():
+        if not char_text:
+            fail("emoji", f"slot {slot} has no character")
+        if slot != "dot" and not emo.slots_for_char(char_text):
+            fail("emoji", f"slot {slot} char {char_text!r} matches nothing")
+    # a slot must never map to a non-numeric id
+    for slot, eid in emo.PREMIUM.items():
+        if not str(eid).isdigit():
+            fail("emoji", f"{slot} has a non-numeric id {eid!r}")
+        if slot not in emo.EMOJI:
+            fail("emoji", f"{slot} is mapped but is not a real slot")
 
     # ── formatting ────────────────────────────────────────────
     if util.fmt_money(1.5) != "1.500 USD":

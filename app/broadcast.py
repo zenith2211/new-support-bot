@@ -10,7 +10,7 @@ channel must never break a purchase, so failures are logged and swallowed.
 import asyncio
 import logging
 
-from . import config, emoji as emo, store, tg, util
+from . import config, store, tg, util
 from .lang import t
 from .msg import Msg, u16
 from .payments import label as method_label

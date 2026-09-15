@@ -85,7 +85,7 @@ EMOJI = {
     "user":       "\U0001F465",   # 👥
     "id":         "\U0001F4C7",   # 📇
     "clipboard":  "\U0001F4CB",   # 📋
-    "chart":      "\U0001F4C8",   # 📈
+    "chart":      "\U0001F30A",   # 🌊 volume/bulk, matching the storefront
     "admin":      "⚙",       # ⚙
     "link":       "\U0001F517",   # 🔗
     "mail":       "\U0001F4E7",   # 📧
@@ -158,6 +158,58 @@ def slots_for_char(char_text: str) -> list:
         slot for slot, value in EMOJI.items()
         if normalize(value) == target
     ]
+
+
+async def audit(tg_module) -> dict:
+    """Ask Telegram about every mapped id and drop the dead ones.
+
+    This matters more than it looks: Telegram rejects a whole message if any
+    custom_emoji_id in it is invalid, and the retry path strips *all* emoji
+    entities — so one stale id silently turns the entire bot back to plain
+    emoji. Pruning at startup keeps that from happening.
+
+    -> {"total", "animated", "static", "dropped", "sets"}
+    """
+    ids = sorted(set(PREMIUM.values()))
+    if not ids:
+        return {"total": 0, "animated": 0, "static": 0, "dropped": 0,
+                "sets": []}
+
+    alive, animated, sets = {}, 0, []
+    for start in range(0, len(ids), 200):
+        data = await tg_module.api(
+            "getCustomEmojiStickers",
+            {"custom_emoji_ids": ids[start:start + 200]}, quiet=True)
+        if not data.get("ok"):
+            # Cannot verify right now — leave the map untouched.
+            return {"total": len(ids), "animated": -1, "static": -1,
+                    "dropped": 0, "sets": []}
+        for sticker in data.get("result") or []:
+            eid = str(sticker.get("custom_emoji_id"))
+            alive[eid] = sticker
+            if sticker.get("is_animated") or sticker.get("is_video"):
+                animated += 1
+            name = sticker.get("set_name")
+            if name and name not in sets:
+                sets.append(name)
+
+    dropped = [slot for slot, eid in PREMIUM.items() if eid not in alive]
+    if dropped:
+        keep = {slot: eid for slot, eid in PREMIUM.items() if eid in alive}
+        os.makedirs(config.DATA_DIR, exist_ok=True)
+        with open(_EMOJI_JSON, "w", encoding="utf-8") as fh:
+            json.dump(keep, fh, ensure_ascii=False, indent=2, sort_keys=True)
+        load_premium()
+        logger.warning("dropped %d dead emoji id(s): %s",
+                       len(dropped), ", ".join(dropped))
+
+    return {
+        "total": len(alive),
+        "animated": animated,
+        "static": len(alive) - animated,
+        "dropped": len(dropped),
+        "sets": sets,
+    }
 
 
 def char(name: str) -> str:

@@ -1,1 +1,5 @@
 aiohttp>=3.9,<4
+
+# Optional: local poster generation (/admin -> product -> Make poster).
+# Without it the bot runs fine and poster generation is simply disabled.
+Pillow>=10,<12
