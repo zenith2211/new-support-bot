@@ -19,13 +19,19 @@ from .msg import Msg
 # just show the default colour.
 SEND_BUTTON_STYLES = config._env_bool("BUTTON_STYLES", True)
 
-# Animated emoji *inside* the button chrome, instead of a plain emoji baked
-# into the label text. Verified real: Telegram ignores made-up button fields
-# ("icon_bogus" is accepted) but rejects a malformed value of this one with
-# `can't parse KeyboardButton: Field "icon_custom_emoji_id"`, which it would
-# only do for a field it parses. Note it does *not* check the id exists at
-# send time, so emoji.audit() pruning dead ids matters here.
-SEND_BUTTON_ICONS = config._env_bool("BUTTON_ICONS", True)
+# Animated emoji *inside* the button chrome. OFF, because it does not work.
+#
+# The API parses the field — it rejects a malformed value with
+# `can't parse KeyboardButton: Field "icon_custom_emoji_id"` — but Telegram
+# Desktop 7.1.4 renders nothing for it, leaving a bare text button. Worse
+# than the fallback, which is why this stays off: a button's emoji comes from
+# its label text, which works on every client.
+#
+# Buttons are the one place a custom emoji cannot go. KeyboardButton and
+# InlineKeyboardButton carry plain text with no entity list, so there is
+# nowhere to attach a custom_emoji entity. Message text is unaffected — that
+# is where all the animated emoji live.
+SEND_BUTTON_ICONS = config._env_bool("BUTTON_ICONS", False)
 
 # The only values Telegram accepts. Anything else is rejected outright on a
 # KeyboardButton ("Invalid button style"), so keep this list closed.

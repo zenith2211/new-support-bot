@@ -898,7 +898,7 @@ async def harvest_emoji(ctx: Ctx, message: dict) -> bool:
     # Every custom emoji belongs to a set. Pulling the whole set turns one
     # forwarded message into hundreds of usable emoji, which is what makes a
     # single forward enough to style the entire bot.
-    pool, set_names = await _emoji_pool(ids)
+    pool, set_names, kinds = await _emoji_pool(ids)
 
     mapping: dict = {}
     for slot, char_text in emo.EMOJI.items():
@@ -907,13 +907,20 @@ async def harvest_emoji(ctx: Ctx, message: dict) -> bool:
             mapping[slot] = eid
 
     total = emo.save_premium(mapping) if mapping else len(emo.PREMIUM)
+    report = await emo.audit(tg)
     missing = [slot for slot in emo.EMOJI if slot not in emo.PREMIUM]
 
     m = Msg()
     m.header("star", "Premium emoji adopted")
     m.kvline("box", "Emoji sets read", len(set_names))
     m.kvline("chart", "Emoji available", len(pool))
-    m.kvline("ok", "Slots now animated", f"{total} / {len(emo.EMOJI)}")
+    m.kvline("ok", "Slots mapped", f"{total} / {len(emo.EMOJI)}")
+    m.kvline("party", "Moving (animated/video)",
+             f"{report['animated']} of {report['total']} ids")
+    if report["static"]:
+        m.kvline("warn", "Still images", report["static"])
+    m.kvline("id", "From the message itself",
+             f"{len(ids)} emoji pinned exactly")
     if set_names:
         m.nl()
         for name in sorted(set_names)[:12]:
@@ -937,26 +944,50 @@ async def harvest_emoji(ctx: Ctx, message: dict) -> bool:
     return True
 
 
-async def _emoji_pool(ids: list) -> tuple[dict, list]:
-    """{normalized emoji char: custom_emoji_id} for every emoji in the sets
-    the given ids belong to, plus the set names."""
-    pool: dict = {}
+def _rank(sticker: dict, from_message: bool) -> int:
+    """How much we want this sticker for its slot. Higher wins.
+
+    An id taken straight out of the forwarded message beats anything merely
+    found in the same set — that is what makes "forward the bot you like"
+    reproduce its exact emoji. Failing that, a moving emoji beats a still
+    one, because a static .webp can never animate however it is sent.
+    """
+    score = 0
+    if from_message:
+        score += 100
+    if sticker.get("is_animated"):
+        score += 10           # .tgs (Lottie)
+    elif sticker.get("is_video"):
+        score += 9            # .webm
+    return score
+
+
+async def _emoji_pool(ids: list) -> tuple[dict, list, dict]:
+    """Pick the best id per emoji character.
+
+    -> ({normalized char: id}, set names, {kind: count} for what was chosen)
+    """
+    best: dict = {}                      # char -> (score, id, sticker)
     set_names: list = []
     if not ids:
-        return pool, set_names
+        return {}, set_names, {}
+
+    def offer(sticker: dict, from_message: bool):
+        char_text = emo.normalize(sticker.get("emoji") or "")
+        eid = str(sticker.get("custom_emoji_id") or "")
+        if not (char_text and eid):
+            return
+        score = _rank(sticker, from_message)
+        if char_text not in best or score > best[char_text][0]:
+            best[char_text] = (score, eid, sticker)
 
     data = await tg.api("getCustomEmojiStickers",
                         {"custom_emoji_ids": ids[:200]}, quiet=True)
     if not data.get("ok"):
-        return pool, set_names
+        return {}, set_names, {}
 
     for sticker in data.get("result") or []:
-        # The sticker's own emoji is authoritative; also seed the pool from
-        # it so a set we cannot read still contributes.
-        char_text = emo.normalize(sticker.get("emoji") or "")
-        eid = str(sticker.get("custom_emoji_id") or "")
-        if char_text and eid:
-            pool.setdefault(char_text, eid)
+        offer(sticker, from_message=True)
         name = sticker.get("set_name")
         if name and name not in set_names:
             set_names.append(name)
@@ -966,12 +997,18 @@ async def _emoji_pool(ids: list) -> tuple[dict, list]:
         if not pack.get("ok"):
             continue
         for sticker in (pack.get("result") or {}).get("stickers") or []:
-            char_text = emo.normalize(sticker.get("emoji") or "")
-            eid = str(sticker.get("custom_emoji_id") or "")
-            if char_text and eid:
-                pool.setdefault(char_text, eid)
+            offer(sticker, from_message=False)
 
-    return pool, set_names
+    pool = {char_text: eid for char_text, (_s, eid, _k) in best.items()}
+    kinds: dict = {"animated": 0, "video": 0, "static": 0}
+    for _score, _eid, sticker in best.values():
+        if sticker.get("is_animated"):
+            kinds["animated"] += 1
+        elif sticker.get("is_video"):
+            kinds["video"] += 1
+        else:
+            kinds["static"] += 1
+    return pool, set_names, kinds
 
 
 async def _product_field_prompt(ctx: Ctx, field: str, pid: str):

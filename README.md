@@ -83,21 +83,19 @@ Every customer gets a stable, shareable **Customer ID** (`#CX-201566`) that
 reveals nothing about their Telegram account. Wallet → Transfer sends balance
 to another customer by that ID, and both sides get a confirmation.
 
-### Animated emoji on buttons
+### Buttons cannot carry animated emoji
 
-Buttons carry their emoji in `icon_custom_emoji_id` rather than baked into the
-label text, so the animated emoji appears inside the button chrome and no
-plain emoji is left in the label. Verified real: Telegram *ignores* invented
-button fields (`icon_bogus` is accepted) but rejects a malformed value of
-this one with `can't parse KeyboardButton: Field "icon_custom_emoji_id"` —
-something it only does for a field it parses.
+Worth knowing, because it looks like a bug otherwise. `KeyboardButton` and
+`InlineKeyboardButton` hold plain text with no entity list, so there is
+nowhere to attach a `custom_emoji` entity — a button's emoji can only be a
+character in its label.
 
-It does **not** check the id exists at send time, so a stale id renders as
-nothing. That is why `emoji.audit()` prunes dead ids at startup.
+There *is* an `icon_custom_emoji_id` field, and the API parses it (a
+malformed value is rejected by name). But Telegram Desktop 7.1.4 renders
+nothing for it, leaving a bare text button — worse than the fallback. So
+`BUTTON_ICONS` defaults to **0** and buttons keep the emoji in their label.
 
-A slot with no premium id falls back to prefixing the label with its plain
-character, so nothing disappears on a bot with no `data/emoji.json`. Disable
-with `BUTTON_ICONS=0`.
+Animated emoji work everywhere else: all message text goes through entities.
 
 ### Coloured buttons
 
