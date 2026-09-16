@@ -1,9 +1,9 @@
 # Store Bot
 
 A Telegram digital-product store: browse a catalog, pay from a wallet, get
-delivery in the chat. Wallet top-ups go through Cryptomus or Binance Pay;
-gift codes and admin credits also fund wallets. Sales, deposits and low stock
-are announced in a channel.
+delivery in the chat. Wallet top-ups go through NOWPayments, Cryptomus or
+Binance Pay; gift codes and admin credits also fund wallets. Sales, deposits
+and low stock are announced in a channel.
 
 Everything is configured with environment variables — no tokens, keys, ids or
 links are in the code. A fresh clone with only `BOT_TOKEN` and `ADMIN_IDS`
@@ -191,13 +191,41 @@ Customer ids are always masked in public posts (`51******04`).
 
 ## Payments
 
-Two gateways ship built in. Each button only appears once its own credentials
-are set; until then the payment screen says no method is enabled and points at
-gift codes and support.
+Three gateways ship built in. Each button only appears once its own
+credentials are set; until then the payment screen says no method is enabled
+and points at gift codes and support.
 
-Both are **polled, not webhooked** — the bot asks the gateway whether an
-invoice is paid when the customer presses *I have paid*. That is why the bot
-runs fine on localhost: it needs no public URL, no port forward and no tunnel.
+All are **polled, not webhooked** — the bot asks the gateway whether a payment
+landed when the customer presses *I have paid*. That is why the bot runs fine
+on localhost: it needs no public URL, no port forward and no tunnel.
+
+### NOWPayments — `NOWPAYMENTS_API_KEY`
+
+Non-custodial: funds forward to the outcome wallet you set in their dashboard
+rather than sitting in an account balance. No KYC and no domain verification,
+and auth is a single header with no request signing.
+
+Unlike the other two there is no checkout page — the bot shows the deposit
+address and exact amount in the chat, so the customer never leaves Telegram.
+
+Customers pay in one coin, `NOWPAYMENTS_PAY_CURRENCY` (default `usdttrc20`).
+Check the key and, more importantly, the minimum:
+
+```
+python -m tools.check_nowpayments
+```
+
+**The per-coin minimum matters more than the fee here.** Every coin has a
+floor, and for a store selling items at a dollar or two that floor decides
+whether the gateway is usable at all. The tool prints it in both the coin and
+your own currency and compares it against `MIN_TOPUP` and your cheapest
+product.
+
+This flow uses `POST /v1/payment`, not `/v1/invoice`, for a specific reason:
+an invoice gives a hosted page, but the payment it spawns can only be found
+again through `GET /v1/payment/` — which needs JWT auth (email + password).
+`GET /v1/payment/{id}` accepts the API key, and `POST /v1/payment` returns
+that id up front, so the whole flow works with the key alone.
 
 ### Cryptomus — `CRYPTOMUS_MERCHANT_ID` + `CRYPTOMUS_API_KEY`
 
@@ -232,12 +260,16 @@ Needs an approved merchant account, which is the slower path to get started.
 paid*, admins get an Approve/Decline message, and approving credits the
 wallet. Worth leaving on as a fallback.
 
-### Adding a third
+### Adding a fourth
 
 One `Method` entry in `app/payments.py` plus a create/check pair, wired into
 `available()` and the dispatch in `create_invoice` / `check_invoice`. Nothing
 else in the bot changes — both method screens lay their buttons out from
 whatever `available()` returns.
+
+If the gateway gives an address instead of a checkout page, return
+`instructions` from `create_invoice` as `label|value` lines; the invoice
+screen renders each value as a tap-to-copy code span.
 
 A gateway must never credit a wallet on an error it cannot interpret:
 `check_invoice` returns `PENDING` for anything it does not positively
@@ -324,7 +356,7 @@ No network, no token needed:
 ```bash
 python -m tests.smoke   # renders every screen in every language
 python -m tests.flow    # drives updates through the router with a faked API
-python -m tests.gateway # Cryptomus signing, statuses and failure handling
+python -m tests.gateway # gateway signing, statuses and failure handling
 ```
 
 Both suites refuse to run against a real `DATA_DIR` — they buy products,
@@ -370,7 +402,7 @@ app/lang.py            every UI string, per language
 app/commands.py        slash-command registry
 app/store.py           JSON persistence
 app/util.py            money/id/time formatting
-app/payments.py        gateways (Cryptomus, Binance Pay)
+app/payments.py        gateways (NOWPayments, Cryptomus, Binance Pay)
 app/screens.py         customer-facing screens
 app/broadcast.py       channel posts and alerts
 app/shop.py            checkout and delivery

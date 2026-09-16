@@ -28,6 +28,9 @@ os.environ["CRYPTOMUS_MERCHANT_ID"] = "8b03432e-385b-4670-8d06-064591096795"
 os.environ["CRYPTOMUS_API_KEY"] = "test-payment-key"
 os.environ["CRYPTOMUS_CURRENCY"] = "USD"
 os.environ["CRYPTOMUS_SUBTRACT"] = "100"
+os.environ["NOWPAYMENTS_API_KEY"] = "test-nowpayments-key"
+os.environ["NOWPAYMENTS_CURRENCY"] = "usd"
+os.environ["NOWPAYMENTS_PAY_CURRENCY"] = "usdttrc20"
 os.environ["BOT_LINK"] = "https://t.me/examplestorebot"
 
 from app import config, payments, tg                           # noqa: E402
@@ -65,9 +68,13 @@ class _FakePost:
 
 class _FakeSession:
     def post(self, url, data=None, headers=None):
+        return self.request("POST", url, data=data, headers=headers)
+
+    def request(self, method, url, data=None, headers=None):
         if isinstance(REPLY, Exception):
             raise REPLY
-        SENT.append({"url": url, "body": data, "headers": headers or {}})
+        SENT.append({"method": method, "url": url, "body": data,
+                     "headers": headers or {}})
         return _FakePost()
 
 
@@ -273,6 +280,173 @@ def check_availability_gating():
         config.CRYPTOMUS_API_KEY = saved
 
 
+# ─── NOWPAYMENTS ──────────────────────────────────────────────
+def nowpay_reply(status: str = "waiting", **extra) -> dict:
+    result = {
+        "payment_id": 5077125051,
+        "payment_status": status,
+        "pay_address": "TXxDgSHT3nMLLEnbFEd3fTqyiBvyNNMYcp",
+        "price_amount": 15.0,
+        "price_currency": "usd",
+        "pay_amount": 15.02,
+        "actually_paid": 0,
+        "pay_currency": "usdttrc20",
+        "order_id": "TOP-A1B2C3D4",
+        "network": "trx",
+    }
+    result.update(extra)
+    return result
+
+
+async def check_nowpay_create():
+    global REPLY
+    REPLY = nowpay_reply()
+    SENT.clear()
+
+    created = await payments._nowpay_create(
+        payments.NOWPAYMENTS, TOPUP, "Spotify Premium")
+
+    check("create ok", created.get("ok"), True)
+    check("provider_ref is the payment id", created.get("provider_ref"),
+          "5077125051")
+    check("no checkout url to open", created.get("checkout_url"), "")
+
+    request = last()
+    check("method", request.get("method"), "POST")
+    check("endpoint", request.get("url"),
+          "https://api.nowpayments.io/v1/payment")
+    check("api key header", request["headers"].get("x-api-key"),
+          "test-nowpayments-key")
+
+    body = last_body()
+    check("price_amount", body.get("price_amount"), 15.0)
+    check("price_currency", body.get("price_currency"), "usd")
+    check("pay_currency", body.get("pay_currency"), "usdttrc20")
+    check("order_id ties the payment to our top-up", body.get("order_id"),
+          "TOP-A1B2C3D4")
+    ok("ipn_callback_url omitted when unset",
+       "ipn_callback_url" not in body)
+
+    # The instructions are the whole customer-facing payload here, and they
+    # must survive rendering: `label|value`, one pair per line.
+    text = created.get("instructions") or ""
+    pairs = dict(line.split("|", 1) for line in text.split("\n") if "|" in line)
+    ok("instructions carry the amount and coin",
+       pairs.get("Send exactly") == "15.02 USDTTRC20", text)
+    ok("instructions carry the address",
+       "TXxDgSHT3nMLLEnbFEd3fTqyiBvyNNMYcp" in pairs.values(), text)
+    ok("every instruction line has a value",
+       all("|" in line and line.split("|", 1)[1].strip()
+           for line in text.split("\n") if line.strip()), text)
+
+
+async def check_nowpay_memo_is_shown():
+    """Coins that route by memo lose the funds if the memo is omitted, so it
+    must never be silently dropped."""
+    global REPLY
+    REPLY = nowpay_reply(pay_currency="ton", network="ton",
+                         payin_extra_id="9876543")
+    created = await payments._nowpay_create(payments.NOWPAYMENTS, TOPUP)
+    text = created.get("instructions") or ""
+    ok("memo is shown when present", "9876543" in text, text)
+    ok("memo is marked required", "required" in text.lower(), text)
+
+    REPLY = nowpay_reply()                       # no memo for this coin
+    created = await payments._nowpay_create(payments.NOWPAYMENTS, TOPUP)
+    ok("no memo line when there is no memo",
+       "memo" not in (created.get("instructions") or "").lower())
+
+
+async def check_nowpay_status_mapping():
+    global REPLY
+    cases = {
+        # Verified in NOWPayments' own documentation.
+        "finished": payments.PAID,
+        "waiting": payments.PENDING,
+        "partially_paid": payments.FAILED,
+        # Standard statuses, spelling not verified in-session. Listing them is
+        # safe either way: an absent name simply never matches.
+        "confirming": payments.PENDING,
+        "confirmed": payments.PAID,
+        "sending": payments.PAID,
+        "failed": payments.FAILED,
+        "refunded": payments.FAILED,
+        "expired": payments.FAILED,
+        # Anything unrecognised must read as pending, never as paid.
+        "some_new_status": payments.PENDING,
+        "": payments.PENDING,
+    }
+    for status, want in cases.items():
+        REPLY = nowpay_reply(status)
+        got = await payments._nowpay_check(dict(TOPUP, provider_ref="5077125051"))
+        check(f"status {status or '(empty)'}", got, want)
+
+
+async def check_nowpay_check_request():
+    global REPLY
+    REPLY = nowpay_reply("finished")
+    SENT.clear()
+    await payments._nowpay_check(dict(TOPUP, provider_ref="5077125051"))
+    check("status method", last().get("method"), "GET")
+    check("status endpoint", last().get("url"),
+          "https://api.nowpayments.io/v1/payment/5077125051")
+    check("GET sends no body", last().get("body"), None)
+
+    # No payment id means nothing to ask: GET /v1/payment/ needs JWT auth, so
+    # we cannot fall back to order_id the way Cryptomus can.
+    SENT.clear()
+    got = await payments._nowpay_check(dict(TOPUP, provider_ref=""))
+    check("missing payment id stays pending", got, payments.PENDING)
+    check("missing payment id sends nothing", len(SENT), 0)
+
+
+async def check_nowpay_failures_never_credit():
+    global REPLY
+    bad = [
+        ({"status": False, "statusCode": 403, "code": "INVALID_API_KEY",
+          "message": "Invalid api key"}, "invalid key"),
+        ({"status": False, "statusCode": 404,
+          "message": "Endpoint not found"}, "404"),
+        ({}, "empty reply"),
+        ("<html>502</html>", "non-dict reply"),
+        (None, "null reply"),
+        (OSError("connection reset"), "network error"),
+    ]
+    for reply, labelled in bad:
+        REPLY = reply
+        check(f"error is pending, not paid ({labelled})",
+              await payments._nowpay_check(dict(TOPUP, provider_ref="1")),
+              payments.PENDING)
+
+        REPLY = reply
+        created = await payments._nowpay_create(payments.NOWPAYMENTS, TOPUP)
+        check(f"create fails cleanly ({labelled})", created.get("ok"), False)
+        ok(f"create explains itself ({labelled})", bool(created.get("error")))
+
+    # A success-shaped reply that is missing the address must not be treated
+    # as usable — there would be nowhere for the customer to send money.
+    REPLY = nowpay_reply(pay_address="")
+    created = await payments._nowpay_create(payments.NOWPAYMENTS, TOPUP)
+    check("no address -> not ok", created.get("ok"), False)
+
+
+def check_nowpay_gating():
+    ok("configured with a key", payments.nowpay_configured())
+    ok("nowpay is offered",
+       "nowpay" in [m.key for m in payments.available()])
+    check("label is resolvable", payments.label("nowpay"),
+          payments.NOWPAYMENTS.label)
+
+    saved = config.NOWPAYMENTS_API_KEY
+    config.NOWPAYMENTS_API_KEY = ""
+    try:
+        ok("hidden without a key", not payments.nowpay_configured())
+        ok("button gone without a key",
+           "nowpay" not in [m.key for m in payments.available()])
+    finally:
+        config.NOWPAYMENTS_API_KEY = saved
+
+
 async def check_public_dispatch():
     """create_invoice / check_invoice must route a Method to the right gateway.
 
@@ -294,6 +468,20 @@ async def check_public_dispatch():
     check("check_invoice hit the right endpoint", last().get("url"),
           "https://api.cryptomus.com/v1/payment/info")
 
+    # Same seam, other gateway — the two must not be able to cross over.
+    REPLY = nowpay_reply("finished")
+    SENT.clear()
+    created = await payments.create_invoice(payments.NOWPAYMENTS, TOPUP, "x")
+    check("create_invoice routes to nowpayments", created.get("ok"), True)
+    check("nowpayments create endpoint", last().get("url"),
+          "https://api.nowpayments.io/v1/payment")
+
+    status = await payments.check_invoice(
+        payments.NOWPAYMENTS, dict(TOPUP, provider_ref="5077125051"))
+    check("check_invoice routes to nowpayments", status, payments.PAID)
+    check("nowpayments status endpoint", last().get("url"),
+          "https://api.nowpayments.io/v1/payment/5077125051")
+
     # A manual top-up must stay manual: no gateway call, and never auto-paid.
     SENT.clear()
     manual = await payments.create_invoice(payments.MANUAL, TOPUP)
@@ -306,11 +494,12 @@ async def check_public_dispatch():
 
 
 async def check_close_is_a_noop():
-    """Cryptomus has no cancel-invoice call; closing must not pretend to."""
-    SENT.clear()
-    result = await payments.close_invoice(payments.CRYPTOMUS, TOPUP)
-    check("close reports success", result, True)
-    check("close sends nothing", len(SENT), 0)
+    """Neither gateway has a cancel call; closing must not pretend to."""
+    for method in (payments.CRYPTOMUS, payments.NOWPAYMENTS):
+        SENT.clear()
+        result = await payments.close_invoice(method, TOPUP)
+        check(f"close reports success ({method.key})", result, True)
+        check(f"close sends nothing ({method.key})", len(SENT), 0)
 
 
 # ─── RUNNER ───────────────────────────────────────────────────
@@ -327,6 +516,12 @@ async def main() -> int:
         ("order_id rules", check_order_id_rules),
         ("amount formatting", check_amount_formatting),
         ("availability gating", check_availability_gating),
+        ("nowpay create request", check_nowpay_create),
+        ("nowpay memo handling", check_nowpay_memo_is_shown),
+        ("nowpay status mapping", check_nowpay_status_mapping),
+        ("nowpay status request", check_nowpay_check_request),
+        ("nowpay errors never credit", check_nowpay_failures_never_credit),
+        ("nowpay gating", check_nowpay_gating),
         ("public dispatch", check_public_dispatch),
         ("close is a no-op", check_close_is_a_noop),
     ]

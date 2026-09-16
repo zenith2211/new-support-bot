@@ -193,6 +193,25 @@ CRYPTOMUS_LIFETIME = max(
 # set this only if you happen to have a public https URL and want one.
 CRYPTOMUS_CALLBACK_URL = _env("CRYPTOMUS_CALLBACK_URL")
 
+# ─── NOWPAYMENTS ──────────────────────────────────────────────
+# One API key, no request signing. Non-custodial: NOWPayments forwards to the
+# outcome wallet you set in their dashboard, so nothing sits in an account.
+NOWPAYMENTS_API_KEY = _env("NOWPAYMENTS_API_KEY")
+NOWPAYMENTS_BASE = _env("NOWPAYMENTS_BASE", "https://api.nowpayments.io")
+NOWPAYMENTS_LABEL = _env("NOWPAYMENTS_LABEL", "USDT")
+# What the price is quoted in...
+NOWPAYMENTS_CURRENCY = _env("NOWPAYMENTS_CURRENCY", "usd").lower()
+# ...and the single coin customers pay with. The bot asks NOWPayments for a
+# deposit address in this coin and shows it in the chat, so the customer never
+# leaves Telegram and we never need a public success_url.
+# usdttrc20 is USDT on Tron: cheap network fees, and the coin this audience
+# most commonly holds. Run tools/check_nowpayments.py after changing it —
+# every coin has its own minimum, and some sit well above MIN_TOPUP.
+NOWPAYMENTS_PAY_CURRENCY = _env("NOWPAYMENTS_PAY_CURRENCY",
+                                "usdttrc20").lower()
+# Optional; polling means it is never required.
+NOWPAYMENTS_CALLBACK_URL = _env("NOWPAYMENTS_CALLBACK_URL")
+
 # ─── RUNTIME ──────────────────────────────────────────────────
 PORT = _env_int("PORT", 10000)
 # 0.0.0.0 is what cloud hosts need. Set 127.0.0.1 to keep the HTTP server

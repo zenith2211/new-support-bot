@@ -68,7 +68,8 @@ async def start_topup(ctx: Ctx, method_key: str, amount: float,
         manual_note = store.setting("manual_pay_note") or _manual_default(amount)
 
     view = screens.invoice(topup, ctx.lang, method.label,
-                           created.get("checkout_url") or "", manual_note)
+                           created.get("checkout_url") or "", manual_note,
+                           pay_to=created.get("instructions") or "")
     await show(ctx, view)
     return True
 

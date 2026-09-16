@@ -62,6 +62,17 @@ CRYPTOMUS = Method(
     currency=config.CRYPTOMUS_CURRENCY,
 )
 
+# Non-custodial, and the only gateway here that needs no hosted checkout page:
+# we show the deposit address in the chat, so the customer never leaves
+# Telegram. See _nowpay_create for why we use payments rather than invoices.
+NOWPAYMENTS = Method(
+    key="nowpay",
+    label=config.NOWPAYMENTS_LABEL,
+    emoji="money",
+    kind="api",
+    currency=config.NOWPAYMENTS_PAY_CURRENCY,
+)
+
 # Fallback used when a gateway is configured but the API call fails, and for
 # deployments that take payment off-Telegram. Enable with MANUAL_PAY=1.
 MANUAL = Method(
@@ -80,12 +91,18 @@ def cryptomus_configured() -> bool:
     return bool(config.CRYPTOMUS_MERCHANT_ID and config.CRYPTOMUS_API_KEY)
 
 
+def nowpay_configured() -> bool:
+    return bool(config.NOWPAYMENTS_API_KEY)
+
+
 def manual_enabled() -> bool:
     return config._env_bool("MANUAL_PAY", False)
 
 
 def available() -> list:
     methods = []
+    if nowpay_configured():
+        methods.append(NOWPAYMENTS)
     if cryptomus_configured():
         methods.append(CRYPTOMUS)
     if binance_configured():
@@ -107,7 +124,7 @@ def label(key: str) -> str:
     if method:
         return method.label
     return {"binance": "Binance Pay", "cryptomus": CRYPTOMUS.label,
-            "manual": MANUAL.label,
+            "nowpay": NOWPAYMENTS.label, "manual": MANUAL.label,
             "gift": "Gift code", "admin": "Admin credit",
             "wallet": "Wallet"}.get(key, key or "—")
 
@@ -342,9 +359,157 @@ async def _cryptomus_check(topup: dict) -> str:
     return PENDING
 
 
+# ─── NOWPAYMENTS ──────────────────────────────────────────────
+# Only statuses confirmed from NOWPayments' own documentation are listed as
+# terminal. Everything unrecognised falls through to PENDING, so a status we
+# have not seen — or one they add later — can never credit a wallet. The cost
+# of that choice is a top-up that stays pending until the customer taps again
+# or an admin settles it, which is the right way round to be wrong.
+_NP_PAID = ("finished", "confirmed", "sending")
+_NP_FAILED = ("failed", "refunded", "expired", "partially_paid")
+# Money arrived, but not the full amount. Needs a human, not an auto-credit.
+_NP_NEEDS_ATTENTION = ("partially_paid",)
+
+
+async def _nowpay_call(method: str, path: str,
+                       body: dict | None = None) -> dict:
+    """Call NOWPayments. -> parsed reply, or a synthetic error dict.
+
+    Auth is a single x-api-key header — no request signing, so unlike
+    Cryptomus there is nothing here that can silently mismatch.
+    """
+    url = f"{config.NOWPAYMENTS_BASE.rstrip('/')}{path}"
+    headers = {"x-api-key": config.NOWPAYMENTS_API_KEY}
+    payload = None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
+
+    try:
+        session = await tg.get_session()
+        async with session.request(method, url, data=payload,
+                                   headers=headers) as resp:
+            data = await resp.json(content_type=None)
+    except Exception as exc:                     # noqa: BLE001 - never crash a handler
+        logger.warning("nowpayments %s %s failed: %s", method, path, exc)
+        return {"_error": str(exc)}
+
+    if not isinstance(data, dict):
+        logger.warning("nowpayments %s %s returned %r", method, path, data)
+        return {"_error": "unexpected reply"}
+
+    # Errors carry status:false plus a message; success bodies have no status.
+    if data.get("status") is False or data.get("statusCode"):
+        logger.warning("nowpayments %s %s rejected: %s", method, path,
+                       data.get("message") or data)
+        data.setdefault("_error", str(data.get("message") or "rejected"))
+    return data
+
+
+def _nowpay_instructions(result: dict, amount_text: str) -> str:
+    """What the customer needs in order to pay.
+
+    Returned as `label|value` lines. screens.invoice renders the label as
+    plain text and the value as a code span, so every value is tap-to-copy
+    and nothing else is — copying "Send exactly 15.02" helps nobody.
+    """
+    coin = str(result.get("pay_currency") or "").upper()
+    lines = []
+    if amount_text:
+        lines.append(f"Send exactly|{amount_text} {coin}")
+    lines.append(f"To this {coin} address|{result.get('pay_address') or ''}")
+    # Coins like TON and XRP route by memo; paying without it loses the funds.
+    memo = str(result.get("payin_extra_id") or "")
+    if memo:
+        lines.append(f"Memo / tag (required!)|{memo}")
+    network = str(result.get("network") or "")
+    if network and network.lower() not in coin.lower():
+        lines.append(f"Network|{network.upper()}")
+    return "\n".join(lines)
+
+
+async def _nowpay_create(method: Method, topup: dict,
+                         description: str = "") -> dict:
+    """Create a payment and return chat-ready payment instructions.
+
+    Uses POST /v1/payment rather than /v1/invoice deliberately. An invoice
+    gives a hosted checkout page, but the payment it spawns can only be found
+    again via GET /v1/payment/ — which needs JWT auth (email + password),
+    not an API key. GET /v1/payment/{id} takes the API key, and POST
+    /v1/payment hands us that id up front. So this flow polls with the key
+    alone, and as a bonus the customer never leaves Telegram.
+    """
+    body = {
+        "price_amount": round(float(topup["amount"]), 8),
+        "price_currency": config.NOWPAYMENTS_CURRENCY,
+        "pay_currency": config.NOWPAYMENTS_PAY_CURRENCY,
+        "order_id": str(topup["id"]),
+        "order_description": (description
+                              or f"{config.STORE_NAME} top-up")[:255],
+    }
+    if config.NOWPAYMENTS_CALLBACK_URL:
+        body["ipn_callback_url"] = config.NOWPAYMENTS_CALLBACK_URL
+
+    data = await _nowpay_call("POST", "/v1/payment", body)
+    if data.get("_error"):
+        return {"ok": False, "error": str(data["_error"])}
+
+    payment_id = str(data.get("payment_id") or "")
+    address = str(data.get("pay_address") or "")
+    if not payment_id or not address:
+        return {"ok": False, "error": "gateway returned no payment address"}
+
+    pay_amount = data.get("pay_amount")
+    amount_text = (f"{float(pay_amount):.8f}".rstrip("0").rstrip(".")
+                   if pay_amount is not None else "")
+
+    return {
+        "ok": True,
+        "checkout_url": "",              # nothing to open; the address is here
+        "provider_ref": payment_id,
+        "instructions": _nowpay_instructions(data, amount_text),
+        "qr": "",
+        "error": "",
+    }
+
+
+async def _nowpay_check(topup: dict) -> str:
+    payment_id = str(topup.get("provider_ref") or "")
+    if not payment_id:
+        # Without the id there is nothing to ask about: GET /v1/payment/ needs
+        # JWT auth, so we cannot look it up by order_id with the API key.
+        logger.warning("nowpayments top-up %s has no payment id",
+                       topup.get("id"))
+        return PENDING
+
+    data = await _nowpay_call("GET", f"/v1/payment/{payment_id}")
+    if data.get("_error"):
+        return PENDING
+
+    status = str(data.get("payment_status") or "").lower()
+    if status in _NP_PAID:
+        return PAID
+    if status in _NP_FAILED:
+        if status in _NP_NEEDS_ATTENTION:
+            logger.warning(
+                "nowpayments top-up %s needs a human: status=%s paid=%s of %s",
+                topup.get("id"), status, data.get("actually_paid"),
+                data.get("pay_amount"),
+            )
+        return FAILED
+    if status:
+        logger.info("nowpayments top-up %s still pending: status=%s",
+                    topup.get("id"), status)
+    return PENDING
+
+
 async def create_invoice(method: Method, topup: dict,
                          description: str = "") -> dict:
-    """Create a payment. -> {ok, checkout_url, provider_ref, qr, error}"""
+    """Create a payment. -> {ok, checkout_url, provider_ref, qr, error}
+
+    May also return `instructions`: text the customer needs in order to pay,
+    for gateways that give an address instead of a checkout page.
+    """
     if method.kind == "manual":
         return {
             "ok": True,
@@ -353,6 +518,9 @@ async def create_invoice(method: Method, topup: dict,
             "qr": "",
             "error": "",
         }
+
+    if method.key == NOWPAYMENTS.key:
+        return await _nowpay_create(method, topup, description)
 
     if method.key == CRYPTOMUS.key:
         return await _cryptomus_create(method, topup, description)
@@ -401,6 +569,9 @@ async def check_invoice(method: Method, topup: dict) -> str:
     if method.kind == "manual":
         return PENDING
 
+    if method.key == NOWPAYMENTS.key:
+        return await _nowpay_check(topup)
+
     if method.key == CRYPTOMUS.key:
         return await _cryptomus_check(topup)
 
@@ -425,6 +596,11 @@ async def check_invoice(method: Method, topup: dict) -> str:
 
 async def close_invoice(method: Method, topup: dict) -> bool:
     """Best-effort cancel so an abandoned invoice cannot be paid later."""
+    if method.key == NOWPAYMENTS.key:
+        # No cancel-payment endpoint takes an API key. A payment simply
+        # expires, and a late deposit to the address still settles to the
+        # outcome wallet, so "I have paid" keeps working.
+        return True
     if method.key == CRYPTOMUS.key:
         # Cryptomus has no cancel-invoice method: an invoice dies when its
         # lifetime runs out (CRYPTOMUS_LIFETIME). Cancelling locally is enough

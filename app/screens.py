@@ -424,7 +424,11 @@ def pay_methods(product_rec: dict, lang: str, qty: int, balance: float,
 
 # ─── INVOICE ──────────────────────────────────────────────────
 def invoice(topup: dict, lang: str, method_label: str,
-            checkout_url: str = "", manual_note: str = "") -> View:
+            checkout_url: str = "", manual_note: str = "",
+            pay_to: str = "") -> View:
+    """`pay_to` is for gateways that hand back a deposit address instead of a
+    checkout page. It arrives as `label|value` lines; the value becomes a code
+    span so the address can be tapped to copy, which is the whole point."""
     m = Msg()
     m.header("card", t("invoice_title", lang))
     m.kvline("money", t("invoice_amount", lang),
@@ -433,7 +437,18 @@ def invoice(topup: dict, lang: str, method_label: str,
     m.emoji("sku").space().bold(f"{t('invoice_ref', lang)}: ")
     m.code(topup.get("id") or "—").nl(2)
 
-    if manual_note:
+    if pay_to:
+        for line in pay_to.split("\n"):
+            if not line.strip():
+                continue
+            label, _, value = line.partition("|")
+            if value:
+                m.text(f"{label.strip()}:").nl()
+                m.code(value.strip()).nl(2)
+            else:
+                m.text(label.strip()).nl()
+        m.italic(t("invoice_address", lang))
+    elif manual_note:
         m.text(manual_note).nl(2)
         m.italic(t("invoice_manual", lang))
     else:

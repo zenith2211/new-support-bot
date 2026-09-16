@@ -505,6 +505,20 @@ STRINGS = {
         "zh": "点击按钮付款，然后返回并点击 “I have paid”。",
         "vi": "Bấm nút để trả, rồi quay lại và bấm “I have paid”.",
     },
+    "invoice_address": {
+        "en": "Send the exact amount to that address, then press "
+              "“I have paid”. Sending a different amount delays it.",
+        "bn": "ঠিক ওই পরিমাণ এই অ্যাড্রেসে পাঠান, তারপর “I have paid” চাপুন। "
+              "অন্য পরিমাণ পাঠালে দেরি হবে।",
+        "hi": "उसी पते पर ठीक वही राशि भेजें, फिर “I have paid” दबाएँ। "
+              "अलग राशि भेजने पर देरी होगी।",
+        "ru": "Отправьте точную сумму на этот адрес, затем нажмите "
+              "«I have paid». Другая сумма задержит зачисление.",
+        "zh": "请向该地址发送准确金额，然后点击 “I have paid”。"
+              "金额不符会延迟到账。",
+        "vi": "Gửi đúng số tiền tới địa chỉ đó, rồi bấm “I have paid”. "
+              "Gửi sai số tiền sẽ bị chậm.",
+    },
     "invoice_manual": {
         "en": "Send the payment, then press “I have paid” and support will "
               "confirm it.",
