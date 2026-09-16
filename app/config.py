@@ -204,11 +204,17 @@ NOWPAYMENTS_CURRENCY = _env("NOWPAYMENTS_CURRENCY", "usd").lower()
 # ...and the single coin customers pay with. The bot asks NOWPayments for a
 # deposit address in this coin and shows it in the chat, so the customer never
 # leaves Telegram and we never need a public success_url.
-# usdttrc20 is USDT on Tron: cheap network fees, and the coin this audience
-# most commonly holds. Run tools/check_nowpayments.py after changing it —
-# every coin has its own minimum, and some sit well above MIN_TOPUP.
-NOWPAYMENTS_PAY_CURRENCY = _env("NOWPAYMENTS_PAY_CURRENCY",
-                                "usdttrc20").lower()
+#
+# SET THIS TO MATCH YOUR OUTCOME WALLET. The minimum payment depends on the
+# pair, not the coin, and a mismatch is brutal: measured against a BEP-20
+# outcome wallet, usdtbsc has a floor of ~$0.09 while usdttrc20 has ~$11.95.
+# Matching also avoids a conversion, which is the difference between the 1%
+# and 1.5% service fee. Run tools/check_nowpayments.py after changing it.
+NOWPAYMENTS_PAY_CURRENCY = _env("NOWPAYMENTS_PAY_CURRENCY", "usdtbsc").lower()
+# The coin your outcome wallet holds. Only used to compute the true minimum
+# for the pair; defaults to the pay currency, i.e. no conversion.
+NOWPAYMENTS_OUTCOME_CURRENCY = _env("NOWPAYMENTS_OUTCOME_CURRENCY",
+                                    NOWPAYMENTS_PAY_CURRENCY).lower()
 # Optional; polling means it is never required.
 NOWPAYMENTS_CALLBACK_URL = _env("NOWPAYMENTS_CALLBACK_URL")
 

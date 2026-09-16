@@ -82,15 +82,18 @@ def main() -> int:
     print(f"pay currency    {coin}  (customers send this)")
     print(f"price currency  {fiat}  (your prices are quoted in this)")
 
-    # 3. The minimum, which is the number that actually matters.
-    query = urllib.parse.urlencode({"currency_from": coin,
-                                    "currency_to": coin})
-    minimum = call(f"/v1/min-amount?{query}")
-    if failed(minimum):
-        print(f"\nCould not read the minimum: {failed(minimum)}")
-        return 1
+    # 3. The minimum, which is the number that actually matters. It depends on
+    #    the *pair*, not the coin: paying in a coin your outcome wallet does
+    #    not hold forces a conversion, and the floor can be 100x higher.
+    out = config.NOWPAYMENTS_OUTCOME_CURRENCY
+    print(f"outcome wallet  {out}  (where NOWPayments forwards your money)")
+    if out != coin:
+        print("                note: differs from the pay currency, so every "
+              "payment is converted")
 
-    min_coin = _as_float(minimum.get("min_amount"))
+    min_coin = _minimum(coin, out)
+    if min_coin is None:
+        return 1
     print(f"\nminimum payment {_trim(min_coin)} {coin.upper()}")
 
     min_fiat = _estimate(min_coin, coin, fiat)
@@ -98,7 +101,43 @@ def main() -> int:
         print(f"                ~{_trim(min_fiat)} {fiat.upper()}")
 
     _compare_with_catalog(min_fiat or min_coin, fiat)
+    _compare_coins(coins, out, fiat, coin)
     return 0
+
+
+def _minimum(pay: str, out: str):
+    query = urllib.parse.urlencode({"currency_from": pay, "currency_to": out})
+    data = call(f"/v1/min-amount?{query}")
+    if failed(data):
+        print(f"\nCould not read the minimum: {failed(data)}")
+        return None
+    return _as_float(data.get("min_amount"))
+
+
+def _compare_coins(enabled: list, out: str, fiat: str, current: str):
+    """Show what other coins would cost as a floor, so the choice of pay
+    currency is an informed one rather than a default nobody revisited."""
+    candidates = [c for c in ("usdtbsc", "usdttrc20", "usdterc20",
+                              "usdtmatic", "usdtsol", "ton", "btc")
+                  if c in enabled or not enabled]
+    if len(candidates) < 2:
+        return
+
+    print(f"\nFloor by pay currency (into {out.upper()}):")
+    rows = []
+    for candidate in candidates:
+        minimum = _minimum(candidate, out)
+        if minimum is None:
+            continue
+        rows.append((candidate, minimum,
+                     _estimate(minimum, candidate, fiat)))
+
+    for candidate, minimum, in_fiat in sorted(rows, key=lambda r: r[2] or 0):
+        marker = "  <- current" if candidate == current else ""
+        shown = f"~{_trim(in_fiat)} {fiat.upper()}" if in_fiat else "?"
+        print(f"  {candidate:<12} {_trim(minimum):>14}   {shown:>12}{marker}")
+    print("\nLowest floor is usually the coin your outcome wallet already "
+          "holds — no conversion.")
 
 
 def _estimate(amount: float, coin: str, fiat: str) -> float:

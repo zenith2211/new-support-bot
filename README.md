@@ -208,18 +208,33 @@ and auth is a single header with no request signing.
 Unlike the other two there is no checkout page — the bot shows the deposit
 address and exact amount in the chat, so the customer never leaves Telegram.
 
-Customers pay in one coin, `NOWPAYMENTS_PAY_CURRENCY` (default `usdttrc20`).
-Check the key and, more importantly, the minimum:
+Customers pay in one coin, `NOWPAYMENTS_PAY_CURRENCY`. Check the key and,
+more importantly, the minimum:
 
 ```
 python -m tools.check_nowpayments
 ```
 
-**The per-coin minimum matters more than the fee here.** Every coin has a
-floor, and for a store selling items at a dollar or two that floor decides
-whether the gateway is usable at all. The tool prints it in both the coin and
-your own currency and compares it against `MIN_TOPUP` and your cheapest
-product.
+**Set the pay currency to match your outcome wallet.** The minimum depends on
+the *pair*, not the coin, and getting it wrong is brutal. Measured against a
+BEP-20 USDT outcome wallet:
+
+| Customer pays | Minimum |
+|---|---|
+| `usdtbsc` — matches the wallet | **~$0.09** |
+| `ton` | ~$0.14 |
+| `usdtmatic` | ~$0.24 |
+| `btc` | ~$0.99 |
+| `usdterc20` | ~$1.12 |
+| `usdttrc20` | **~$11.95** |
+
+A mismatch forces a conversion, which raises the floor by up to 100x and
+moves you from the 1% fee to 1.5%. For a store selling items at a dollar or
+two, that floor — not the fee — decides whether the gateway works at all.
+
+The tool prints your real floor in both the coin and your own currency, ranks
+every candidate coin, and compares the result against `MIN_TOPUP` and your
+cheapest product.
 
 This flow uses `POST /v1/payment`, not `/v1/invoice`, for a specific reason:
 an invoice gives a hosted page, but the payment it spawns can only be found
