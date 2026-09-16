@@ -324,6 +324,7 @@ No network, no token needed:
 ```bash
 python -m tests.smoke   # renders every screen in every language
 python -m tests.flow    # drives updates through the router with a faked API
+python -m tests.gateway # Cryptomus signing, statuses and failure handling
 ```
 
 Both suites refuse to run against a real `DATA_DIR` — they buy products,
@@ -376,5 +377,5 @@ app/shop.py            checkout and delivery
 app/state.py           short-lived conversation state
 app/handlers/          router, shop flow, account, admin
 app/runner.py          polling loop, http server, startup
-tests/                 smoke + flow
+tests/                 smoke + flow + gateway
 ```
