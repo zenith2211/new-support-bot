@@ -11,7 +11,7 @@ Layout:
     commands.py    slash-command registry
     store.py       JSON persistence
     util.py        money/id/time formatting
-    payments.py    payment gateways (Binance Pay)
+    payments.py    payment gateways (Cryptomus, Binance Pay)
     screens.py     customer-facing screens
     broadcast.py   channel posts and alerts
     shop.py        checkout and delivery

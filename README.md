@@ -1,9 +1,9 @@
 # Store Bot
 
 A Telegram digital-product store: browse a catalog, pay from a wallet, get
-delivery in the chat. Wallet top-ups go through Binance Pay; gift codes and
-admin credits also fund wallets. Sales, deposits and low stock are announced
-in a channel.
+delivery in the chat. Wallet top-ups go through Cryptomus or Binance Pay;
+gift codes and admin credits also fund wallets. Sales, deposits and low stock
+are announced in a channel.
 
 Everything is configured with environment variables — no tokens, keys, ids or
 links are in the code. A fresh clone with only `BOT_TOKEN` and `ADMIN_IDS`
@@ -191,16 +191,57 @@ Customer ids are always masked in public posts (`51******04`).
 
 ## Payments
 
-Binance Pay is the built-in gateway. Its button only appears once both
-`BINANCE_PAY_KEY` and `BINANCE_PAY_SECRET` are set; until then the payment
-screen says no method is enabled and points at gift codes and support.
+Two gateways ship built in. Each button only appears once its own credentials
+are set; until then the payment screen says no method is enabled and points at
+gift codes and support.
+
+Both are **polled, not webhooked** — the bot asks the gateway whether an
+invoice is paid when the customer presses *I have paid*. That is why the bot
+runs fine on localhost: it needs no public URL, no port forward and no tunnel.
+
+### Cryptomus — `CRYPTOMUS_MERCHANT_ID` + `CRYPTOMUS_API_KEY`
+
+Accepts payment from any wallet, so it reaches customers who do not hold an
+account with any particular exchange. Use the **payment** API key; payouts use
+a separate key that this bot never needs.
+
+`CRYPTOMUS_SUBTRACT=100` (the default) charges Cryptomus' commission to the
+buyer, so the full invoice amount reaches your balance.
+
+To see the commission and per-coin minimums your account actually gets:
+
+```
+python -m tools.check_cryptomus
+```
+
+Worth running before you go live — some coins have a minimum well above
+`MIN_TOPUP`, and the public tariffs page does not render its own fee tables.
+
+Cryptomus has no cancel-invoice API, so `CRYPTOMUS_LIFETIME` (default:
+`ORDER_EXPIRY_MINUTES`) is what retires an abandoned invoice. Reusing an
+`order_id` returns the existing invoice rather than creating a second one, so
+a double-tapped Pay button cannot produce two invoices.
+
+### Binance Pay — `BINANCE_PAY_KEY` + `BINANCE_PAY_SECRET`
+
+Needs an approved merchant account, which is the slower path to get started.
+
+### Manual
 
 `MANUAL_PAY=1` adds a "pay by hand" method: the customer presses *I have
 paid*, admins get an Approve/Decline message, and approving credits the
-wallet.
+wallet. Worth leaving on as a fallback.
 
-Adding another gateway means one `Method` entry in `app/payments.py` plus a
-create/check pair — nothing else in the bot changes.
+### Adding a third
+
+One `Method` entry in `app/payments.py` plus a create/check pair, wired into
+`available()` and the dispatch in `create_invoice` / `check_invoice`. Nothing
+else in the bot changes — both method screens lay their buttons out from
+whatever `available()` returns.
+
+A gateway must never credit a wallet on an error it cannot interpret:
+`check_invoice` returns `PENDING` for anything it does not positively
+recognise as paid or failed.
 
 ## Languages
 
@@ -328,7 +369,7 @@ app/lang.py            every UI string, per language
 app/commands.py        slash-command registry
 app/store.py           JSON persistence
 app/util.py            money/id/time formatting
-app/payments.py        gateways (Binance Pay)
+app/payments.py        gateways (Cryptomus, Binance Pay)
 app/screens.py         customer-facing screens
 app/broadcast.py       channel posts and alerts
 app/shop.py            checkout and delivery

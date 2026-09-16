@@ -167,6 +167,32 @@ BINANCE_PAY_BASE = _env(
 # Optional: Binance Pay ID shown to the user so they can also pay manually.
 BINANCE_PAY_ID = _env("BINANCE_PAY_ID")
 
+# ─── CRYPTOMUS ────────────────────────────────────────────────
+# Merchant uuid + *payment* API key from the Cryptomus dashboard. Payouts use
+# a separate key; this bot never pays out, so only the payment key is needed.
+CRYPTOMUS_MERCHANT_ID = _env("CRYPTOMUS_MERCHANT_ID")
+CRYPTOMUS_API_KEY = _env("CRYPTOMUS_API_KEY")
+CRYPTOMUS_BASE = _env("CRYPTOMUS_BASE", "https://api.cryptomus.com")
+CRYPTOMUS_LABEL = _env("CRYPTOMUS_LABEL", "Crypto")
+# Invoice currency. The customer still picks which coin to pay with, unless
+# CRYPTOMUS_TO_CURRENCY / CRYPTOMUS_NETWORK pin it down.
+CRYPTOMUS_CURRENCY = _env("CRYPTOMUS_CURRENCY", "USD")
+CRYPTOMUS_TO_CURRENCY = _env("CRYPTOMUS_TO_CURRENCY")    # e.g. USDT
+CRYPTOMUS_NETWORK = _env("CRYPTOMUS_NETWORK")            # e.g. tron
+# Share of Cryptomus' commission charged to the customer, 0-100. At 100 the
+# buyer covers the fee and the full invoice amount reaches your balance.
+CRYPTOMUS_SUBTRACT = max(0, min(100, _env_int("CRYPTOMUS_SUBTRACT", 100)))
+# Invoice lifespan in seconds. Cryptomus accepts 300-43200; we default to the
+# store's own order expiry so an abandoned invoice and an abandoned order die
+# at the same time. There is no cancel-invoice API — expiry is the only way.
+CRYPTOMUS_LIFETIME = max(
+    300, min(43200, _env_int("CRYPTOMUS_LIFETIME",
+                             max(1, ORDER_EXPIRY_MINUTES) * 60)),
+)
+# Optional. The bot polls for payment status, so a webhook is never required;
+# set this only if you happen to have a public https URL and want one.
+CRYPTOMUS_CALLBACK_URL = _env("CRYPTOMUS_CALLBACK_URL")
+
 # ─── RUNTIME ──────────────────────────────────────────────────
 PORT = _env_int("PORT", 10000)
 # 0.0.0.0 is what cloud hosts need. Set 127.0.0.1 to keep the HTTP server
