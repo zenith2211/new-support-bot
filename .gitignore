@@ -9,8 +9,15 @@ __pycache__/
 venv/
 
 # Runtime state — users, orders, catalog, codes. Never commit it.
-data/
+# Listed as data/* rather than data/ so the negation below can apply: git does
+# not descend into an excluded directory.
+data/*
 *.json.tmp
+
+# ...except the emoji map, which is configuration, not state: 69 slot -> id
+# mappings and nothing else. It has to be in the repo, because a host with an
+# ephemeral disk would otherwise boot with no premium emoji at all.
+!data/emoji.json
 
 # Local run logs
 bot-run.log
