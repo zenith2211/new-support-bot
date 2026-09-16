@@ -11,3 +11,7 @@ venv/
 # Runtime state — users, orders, catalog, codes. Never commit it.
 data/
 *.json.tmp
+
+# Local run logs
+bot-run.log
+*.log
