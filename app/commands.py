@@ -24,6 +24,7 @@ COMMANDS = [
     ("terms",    "cmd_terms",    "terms",    False),
     ("id",       "cmd_id",       "id",       False),
     ("admin",    "cmd_admin",    "admin",    True),
+    ("inventorylist", "cmd_inventory", "stock", True),
 ]
 
 DESCRIPTIONS = {
@@ -90,6 +91,11 @@ DESCRIPTIONS = {
         "en": "admin panel", "bn": "অ্যাডমিন প্যানেল",
         "hi": "एडमिन पैनल", "ru": "админ-панель",
         "zh": "管理面板", "vi": "bảng quản trị",
+    },
+    "cmd_inventory": {
+        "en": "full stock list", "bn": "সম্পূর্ণ স্টক তালিকা",
+        "hi": "पूरी स्टॉक सूची", "ru": "весь склад",
+        "zh": "完整库存清单", "vi": "toàn bộ kho",
     },
 }
 

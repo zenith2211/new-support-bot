@@ -9,6 +9,8 @@ to read.
 
 import asyncio
 import logging
+import os
+import tempfile
 
 from .. import broadcast, config, emoji as emo, payments, screens, \
     store, tg, util
@@ -234,6 +236,86 @@ async def product_open(ctx: Ctx, pid: str):
         [btn("Category", f"ad:cat:o:{product.get('cat_id')}",
              emoji_name="back")],
     )))
+
+
+# ─── /inventorylist ───────────────────────────────────────────
+# Every stock line is a sellable credential or link, so this is the single
+# most sensitive screen in the bot. Admin-only, and never posted to a channel.
+async def inventory_list(ctx: Ctx):
+    if not config.is_admin(ctx.user_id):
+        logger.warning("non-admin %s tried /inventorylist", ctx.user_id)
+        await send_new(ctx, screens.start(ctx.tg_user, ctx.lang,
+                                          is_admin=False))
+        return
+
+    products = sorted(store.products.values(),
+                      key=lambda p: str(p.get("name") or ""))
+
+    report = [f"{store.store_name()} — full inventory",
+              util.now_iso(), ""]
+    total_lines = 0
+    listed = 0
+
+    for product in products:
+        pid = product["id"]
+        mode = product.get("stock_mode") or "lines"
+        name = product.get("name") or pid
+        header = f"{name}  [{pid}]  ({mode})"
+        report.append(header)
+        report.append("-" * len(header))
+
+        if mode == "unlimited":
+            payload = str(product.get("payload") or "").strip()
+            report.append("  unlimited — every buyer receives:")
+            report.append(f"  {payload or '(no payload set!)'}")
+        elif mode == "manual":
+            report.append(f"  manual delivery — counter: "
+                          f"{product.get('manual_stock') or 0}")
+        else:
+            lines = store.stock_lines(pid)
+            total_lines += len(lines)
+            if not lines:
+                report.append("  (empty)")
+            for index, line in enumerate(lines, 1):
+                report.append(f"  {index:>3}. {line}")
+        listed += 1
+        report.append("")
+
+    report.append(f"{listed} products, {total_lines} deliverable lines")
+
+    m = Msg()
+    m.header("stock", "Full inventory")
+    m.kvline("box", "Products", listed)
+    m.kvline("stock", "Deliverable lines", total_lines)
+    low = store.low_stock_products()
+    if low:
+        m.nl().emoji("low").space().bold("Low stock").nl()
+        for product, count in low[:10]:
+            m.text(f"• {util.clip(product.get('name'), 36)} — {count}").nl()
+    m.nl().italic("Full list attached. It contains live credentials — do not "
+                  "forward it.")
+
+    caption, entities = m.build()
+    path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".txt", delete=False, encoding="utf-8",
+            prefix="inventory-",
+        ) as fh:
+            fh.write("\n".join(line for line in report if line is not None))
+            path = fh.name
+        await tg.send_document(ctx.chat_id, path, caption, entities)
+    except OSError as exc:
+        logger.warning("inventory file failed: %s", exc)
+        await send_new(ctx, screens.simple(
+            "warn", "Could not build the list", str(exc), ctx.lang,
+            kb(_back_row())))
+    finally:
+        if path and os.path.exists(path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 # ─── STOCK ────────────────────────────────────────────────────
@@ -565,9 +647,11 @@ async def handle_callback(ctx: Ctx, rest: str) -> bool:
         elif action == "a":
             await _prompt(ctx, "ad_stock_add", "Add stock",
                           "One item per line. Each line is delivered to one "
-                          "buyer.\n\nExample:\n"
-                          "mail@example.com | pass | note\n"
-                          "mail2@example.com | pass2 | note",
+                          "buyer, exactly as you type it — an account, a "
+                          "link, a key, anything.\n\nExamples:\n"
+                          "https://t.me/+AbCdEf123\n"
+                          "https://drive.google.com/file/d/1a2b3c\n"
+                          "mail@example.com | pass | note",
                           cancel_to=f"ad:prod:o:{arg}", pid=arg)
         elif action == "c":
             store.stock_clear(arg)

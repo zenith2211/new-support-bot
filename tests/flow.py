@@ -36,7 +36,7 @@ if "storebot-flow-" not in _DATA_DIR and not os.environ.get("ALLOW_LIVE_DATA"):
         "temp dir, or set ALLOW_LIVE_DATA=1 if you really mean it.\n")
     raise SystemExit(2)
 
-from app import screens, store, tg                            # noqa: E402
+from app import config, screens, store, tg                    # noqa: E402
 from app.handlers import router                                # noqa: E402
 
 USER = {"id": 512345604, "first_name": "Coder", "username": "coder",
@@ -498,6 +498,86 @@ async def scenario_alerts():
            "alerts should be back on")
 
 
+async def scenario_inventory_list():
+    """/inventorylist attaches every stock line, i.e. every live credential.
+    The admin check is the only thing standing between that file and a
+    customer, so it is worth a test of its own."""
+    pid = "pspot1"
+    store.stock_add(pid, ["https://t.me/+SecretInviteXYZ",
+                          "canary@example.com | canary-pass"])
+
+    def documents(chat_id) -> list:
+        return [payload for method, payload in CALLS
+                if method == "sendDocument"
+                and payload.get("chat_id") == chat_id]
+
+    # A customer must get nothing.
+    reset()
+    await send("/inventorylist")
+    expect("customer gets no inventory file", not documents(USER["id"]),
+           "a stock dump was sent to a non-admin")
+    expect("customer sees no stock line",
+           "SecretInviteXYZ" not in last_text(USER["id"]),
+           f"leaked: {last_text(USER['id'])[:200]}")
+
+    # An admin gets the file, with the link stored verbatim.
+    reset()
+    await send("/inventorylist", ADMIN)
+    docs = documents(ADMIN["id"])
+    expect("admin gets the inventory file", bool(docs), "no document sent")
+    caption = (docs[0].get("caption") or "") if docs else ""
+    expect_in("caption counts the lines", "Deliverable lines", caption)
+    expect("caption warns about forwarding", "forward" in caption.lower(),
+           f"caption: {caption[:160]}")
+
+
+async def scenario_force_join_two_chats():
+    """Both chats must be listed, and joining only one must not open the
+    gate — the earlier single-channel code would have let that through."""
+    joined = {"-100111": False, "-100222": False}
+
+    async def fake_is_member(chat_id, user_id):
+        return joined.get(str(chat_id), False)
+
+    real_is_member = tg.is_member
+    real_chats = config.FORCE_JOIN_CHATS
+    tg.is_member = fake_is_member
+    config.FORCE_JOIN_CHATS = [
+        {"id": -100111, "link": "https://t.me/first", "name": "First Group"},
+        {"id": -100222, "link": "https://t.me/+priv", "name": "Second Group"},
+    ]
+    store.set_setting("force_join", True)
+    try:
+        reset()
+        await send("/products")
+        text = last_text(USER["id"])
+        expect_in("names the first chat", "First Group", text)
+        expect_in("names the second chat", "Second Group", text)
+        expect("gate blocks the catalog", "Categories" not in text,
+               f"catalog leaked: {text[:160]}")
+
+        # Joined one of two: still gated, and only the missing one is offered.
+        joined["-100111"] = True
+        reset()
+        await send("/products")
+        text = last_text(USER["id"])
+        expect("still gated after joining one", "Second Group" in text,
+               f"got: {text[:200]}")
+        expect("stops offering the joined chat", "First Group" not in text,
+               f"still asking for the joined chat: {text[:200]}")
+
+        # Both joined: through.
+        joined["-100222"] = True
+        reset()
+        await send("/products")
+        expect_in("through once both joined", "Categories",
+                  last_text(USER["id"]))
+    finally:
+        tg.is_member = real_is_member
+        config.FORCE_JOIN_CHATS = real_chats
+        store.set_setting("force_join", False)
+
+
 async def scenario_admin():
     reset()
     await send("/admin", ADMIN)
@@ -684,6 +764,8 @@ async def main() -> int:
         ("account screens", scenario_account_screens),
         ("stock alerts", scenario_alerts),
         ("admin panel", scenario_admin),
+        ("inventory list", scenario_inventory_list),
+        ("force join two chats", scenario_force_join_two_chats),
         ("poster message edit", scenario_photo_message_edit),
     ]
 

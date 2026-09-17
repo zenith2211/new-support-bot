@@ -832,15 +832,29 @@ def api_screen(lang: str) -> View:
 
 
 # ─── GATES ────────────────────────────────────────────────────
-def force_join(lang: str) -> View:
-    channel = config.FORCE_JOIN_NAME or "our channel"
+def force_join(lang: str, missing: list | None = None) -> View:
+    """`missing` is the chats this user still has to join — one button each."""
+    chats = missing if missing is not None else config.FORCE_JOIN_CHATS
+    names = [str(chat.get("name") or "our chat") for chat in chats]
+
     m = Msg()
     m.header("bell", t("join_title", lang))
-    m.text(t("join_intro", lang, channel=channel))
+    m.text(t("join_intro", lang, channel=", ".join(names) or "our chat"))
+    if len(chats) > 1:
+        m.nl(2)
+        for chat in chats:
+            m.emoji("dot").space().text(
+                str(chat.get("name") or "our chat")).nl()
+
     rows = []
-    if config.FORCE_JOIN_LINK:
-        rows.append([btn(t("btn_join_channel", lang),
-                         url=config.FORCE_JOIN_LINK, emoji_name="link",
+    for chat in chats:
+        link = str(chat.get("link") or "")
+        if not link:
+            continue
+        label = t("btn_join_channel", lang)
+        if len(chats) > 1:
+            label = f"{label} — {chat.get('name')}"
+        rows.append([btn(util.clip(label, 60), url=link, emoji_name="link",
                          style="success")])
     rows.append([btn(t("btn_joined", lang), "nav:joined", emoji_name="ok")])
     return View.of(m, kb(*rows), poster=store.poster("BANNER_START"))

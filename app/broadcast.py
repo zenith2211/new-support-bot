@@ -283,6 +283,26 @@ async def to_admins(builder, keyboard: dict | None = None):
         await tg.send_message(admin_id, text, entities, keyboard)
 
 
+async def admin_chat_id(chat_id, title: str, note: str = ""):
+    """Report a chat's numeric id after the bot is added to it.
+
+    The id is the only handle that works for a private group: it has no
+    username, and no API turns an invite link into an id.
+    """
+    def build(m: Msg):
+        m.header("link", "Added to a chat")
+        m.emoji("category").space().bold("Chat: ").text(str(title)).nl()
+        m.emoji("sku").space().bold("Chat id: ").code(str(chat_id)).nl(2)
+        if note:
+            m.italic(note).nl(2)
+        m.text("To gate the shop on it, append to FORCE_JOIN_CHATS:").nl()
+        m.code(f"{chat_id}|<invite link>|{title}").nl(2)
+        m.text("To post orders and deposits there, set:").nl()
+        m.code(f"LOG_CHANNEL_ID={chat_id}")
+
+    await to_admins(build)
+
+
 async def admin_manual_topup(topup: dict, user_rec: dict):
     def build(m: Msg):
         m.header("warn", "Manual payment claimed")

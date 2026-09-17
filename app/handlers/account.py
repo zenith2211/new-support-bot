@@ -322,11 +322,17 @@ async def whoami(ctx: Ctx):
 
 # ─── FORCE JOIN ───────────────────────────────────────────────
 async def joined_check(ctx: Ctx):
-    if not store.setting("force_join") or not config.FORCE_JOIN_CHANNEL_ID:
+    if not store.setting("force_join") or not config.FORCE_JOIN_CHATS:
         await home(ctx)
         return
-    if await tg.is_member(config.FORCE_JOIN_CHANNEL_ID, ctx.user_id):
+    missing = await tg.missing_chats(config.FORCE_JOIN_CHATS, ctx.user_id)
+    if not missing:
         await toast(ctx, ctx.s("btn_joined"))
         await home(ctx)
         return
-    await toast(ctx, ctx.s("join_not_yet"), alert=True)
+    # Say which one is still outstanding, so "I have joined" is not a
+    # dead end for someone who joined only the first of two.
+    await toast(ctx, f"{ctx.s('join_not_yet')} "
+                     f"({', '.join(str(c.get('name')) for c in missing)})",
+                alert=True)
+    await show(ctx, screens.force_join(ctx.lang, missing))

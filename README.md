@@ -143,11 +143,38 @@ text.
 ## Commands
 
 `/start` `/products` `/wallet` `/topup` `/orders` `/gift` `/support`
-`/profile` `/language` `/help` `/terms` `/id` — and `/admin` for admins.
+`/profile` `/language` `/help` `/terms` `/id` — plus `/admin` and
+`/inventorylist` for admins.
 
 They are declared once in `app/commands.py`, which drives the list printed
 inside `/start`, Telegram's hamburger menu (registered per language), and the
 router. Adding a command in one place updates all three.
+
+### `/inventorylist`
+
+Dumps every product with all of its stock, as a `.txt` attachment, with a
+summary and the low-stock list in the caption. Unlimited products show their
+payload; manual ones show their counter.
+
+**Admin only, and deliberately never a channel post** — the file is every
+sellable credential you hold, in plain text. `tests/flow.py` asserts a
+non-admin gets no document.
+
+## Force join
+
+Set `FORCE_JOIN=1` and list the chats in `FORCE_JOIN_CHATS`, one `id|link|name`
+entry per chat, separated by `;`. Users must join **all** of them; the gate
+lists only the ones they are still missing, so joining one of two does not
+leave them stuck.
+
+**The bot must be an admin in every listed chat.** Membership checks fail
+*open* — a config mistake must never lock the shop — so if the bot is not an
+admin, everyone is silently let through. `app/tg.py` logs a warning naming the
+chat when a check fails, which is the thing to look for.
+
+A private group has no username, and no Bot API method turns an invite link
+into a chat id. So add the bot to the group: it reports the numeric id to every
+admin by DM, ready to paste into `FORCE_JOIN_CHATS` or `LOG_CHANNEL_ID`.
 
 ## Admin panel
 

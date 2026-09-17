@@ -110,11 +110,46 @@ ADMINS = _env_ids("ADMIN_IDS")
 # Channel that receives NEW ORDER / WALLET FUNDED / ALMOST GONE posts.
 LOG_CHANNEL_ID = _env_int("LOG_CHANNEL_ID", 0)
 
-# Public channel users are pushed to join before they can shop.
+# Channels/groups users are pushed to join before they can shop.
 FORCE_JOIN = _env_bool("FORCE_JOIN", False)
+# Legacy single-chat form, still honoured when FORCE_JOIN_CHATS is empty.
 FORCE_JOIN_CHANNEL_ID = _env_int("FORCE_JOIN_CHANNEL_ID", 0)
 FORCE_JOIN_LINK = _env("FORCE_JOIN_LINK")
 FORCE_JOIN_NAME = _env("FORCE_JOIN_NAME", "our channel")
+
+
+def _parse_join_chats(raw: str) -> list:
+    """'id | link | name ; id | link | name' -> list of dicts.
+
+    Entries separate on ';' or a newline, fields on '|'. The name is optional.
+    A private group has no username, so its numeric id is the only way to
+    check membership — the bot reports that id when you add it to the chat.
+    """
+    out = []
+    for chunk in raw.replace("\n", ";").split(";"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        parts = [part.strip() for part in chunk.split("|")]
+        raw_id = parts[0] if parts else ""
+        if not raw_id.lstrip("-").isdigit():
+            logger.warning("FORCE_JOIN_CHATS: %r has no numeric chat id, "
+                           "skipping", chunk)
+            continue
+        link = parts[1] if len(parts) > 1 else ""
+        name = parts[2] if len(parts) > 2 else ""
+        out.append({"id": int(raw_id), "link": link,
+                    "name": name or link or "our chat"})
+    return out
+
+
+FORCE_JOIN_CHATS = _parse_join_chats(_env("FORCE_JOIN_CHATS"))
+if not FORCE_JOIN_CHATS and FORCE_JOIN_CHANNEL_ID:
+    FORCE_JOIN_CHATS = [{
+        "id": FORCE_JOIN_CHANNEL_ID,
+        "link": FORCE_JOIN_LINK,
+        "name": FORCE_JOIN_NAME,
+    }]
 
 # ─── BRANDING ─────────────────────────────────────────────────
 STORE_NAME = _env("STORE_NAME", "Store Bot")

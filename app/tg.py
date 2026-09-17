@@ -415,15 +415,30 @@ async def bot_link() -> str:
 
 
 async def is_member(chat_id: int, user_id) -> bool:
-    """True when the user is in the channel (or the check cannot be made)."""
+    """True when the user is in the channel (or the check cannot be made).
+
+    Fails open on purpose: a config mistake must never lock the shop. Note the
+    most common mistake is the bot not being an admin in the chat, which makes
+    every check fail and so waves everyone through — hence the warning.
+    """
     if not chat_id:
         return True
     data = await api("getChatMember", {"chat_id": chat_id, "user_id": user_id})
     if not data.get("ok"):
-        logger.warning("membership check failed: %s", data.get("description"))
+        logger.warning("membership check failed for chat %s: %s — is the bot "
+                       "an admin there?", chat_id, data.get("description"))
         return True  # never lock users out because of a config mistake
     status = data.get("result", {}).get("status", "")
     return status in ("creator", "administrator", "member", "restricted")
+
+
+async def missing_chats(chats: list, user_id) -> list:
+    """Which of `chats` the user has not joined. Empty list = let them in."""
+    missing = []
+    for chat in chats or []:
+        if not await is_member(chat.get("id"), user_id):
+            missing.append(chat)
+    return missing
 
 
 async def set_my_commands(commands: list, scope: dict | None = None,

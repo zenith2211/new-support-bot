@@ -9,7 +9,7 @@ screen.
 
 import logging
 
-from .. import commands, config, screens, state, store, tg, util
+from .. import broadcast, commands, config, screens, state, store, tg, util
 from ..lang import t
 from .base import Ctx, ctx_from_callback, ctx_from_message, error, send_new, \
     toast
@@ -27,15 +27,41 @@ async def handle_update(update: dict):
     elif "callback_query" in update:
         await on_callback(update["callback_query"])
     elif "my_chat_member" in update:
-        _on_membership(update["my_chat_member"])
+        await _on_membership(update["my_chat_member"])
 
 
-def _on_membership(event: dict):
-    """A user blocking the bot is normal — just note it."""
+async def _on_membership(event: dict):
+    """A user blocking the bot is normal — just note it.
+
+    Being added to a group is worth more: a private group has no username, so
+    its numeric id is the only way to check membership or post logs, and there
+    is no API that maps an invite link to an id. So when the bot joins a chat
+    it reports the id to the admins, ready to paste into FORCE_JOIN_CHATS or
+    LOG_CHANNEL_ID.
+    """
     status = (event.get("new_chat_member") or {}).get("status")
     chat = event.get("chat") or {}
+    chat_id = chat.get("id")
+
     if status == "kicked" and chat.get("type") == "private":
-        logger.info("user %s blocked the bot", chat.get("id"))
+        logger.info("user %s blocked the bot", chat_id)
+        return
+
+    if chat.get("type") in ("group", "supergroup", "channel") \
+            and status in ("member", "administrator"):
+        title = chat.get("title") or "this chat"
+        logger.info("added to %s %s (%s) as %s",
+                    chat.get("type"), title, chat_id, status)
+        if status != "administrator":
+            note = ("Make the bot an ADMIN here — a plain member cannot "
+                    "check who has joined, and force-join would let "
+                    "everyone through.")
+        else:
+            note = "Admin rights confirmed — membership checks will work."
+        try:
+            await broadcast.admin_chat_id(chat_id, title, note)
+        except Exception as exc:                 # noqa: BLE001
+            logger.warning("could not report chat id: %s", exc)
 
 
 # ─── GATES ────────────────────────────────────────────────────
@@ -48,14 +74,15 @@ async def _blocked(ctx: Ctx) -> bool:
 
 
 async def _gated(ctx: Ctx) -> bool:
-    """True when the user must join the channel first."""
-    if not store.setting("force_join") or not config.FORCE_JOIN_CHANNEL_ID:
+    """True when the user must join one or more chats first."""
+    if not store.setting("force_join") or not config.FORCE_JOIN_CHATS:
         return False
     if config.is_admin(ctx.user_id):
         return False
-    if await tg.is_member(config.FORCE_JOIN_CHANNEL_ID, ctx.user_id):
+    missing = await tg.missing_chats(config.FORCE_JOIN_CHATS, ctx.user_id)
+    if not missing:
         return False
-    await send_new(ctx, screens.force_join(ctx.lang))
+    await send_new(ctx, screens.force_join(ctx.lang, missing))
     return True
 
 
@@ -168,6 +195,8 @@ async def _on_command(ctx: Ctx, text: str):
         await send_new(ctx, screens.wallet(ctx.user, ctx.lang))
     elif command == "admin":
         await admin.panel(ctx)
+    elif command in ("inventorylist", "inventory", "stocklist"):
+        await admin.inventory_list(ctx)
     elif command == "cancel":
         state.clear_prompt(ctx.user_id)
         await send_new(ctx, screens.simple("no", ctx.s("cancelled"), "",
