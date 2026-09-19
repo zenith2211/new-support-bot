@@ -1,11 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": null,
+  "outputDirectory": null,
   "functions": {
     "api/telegram.py": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "excludeFiles": "{tests/**,tools/**,node_modules/**,.claude/**,*.md}"
     },
     "api/cron.py": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "excludeFiles": "{tests/**,tools/**,node_modules/**,.claude/**,*.md}"
     }
   },
   "crons": [

@@ -37,6 +37,9 @@ def exercise(backend, label: str):
     table = "t_probe"
     backend.ensure()
 
+    # Start clean. A run killed part-way through leaves rows behind, and
+    # without this the next run fails on residue rather than on a real bug.
+    backend.replace_all(table, {})
     check(f"{label}: empty table", backend.load(table), {})
 
     backend.put(table, "u1", {"balance": 5}, {"u1": {"balance": 5}})
