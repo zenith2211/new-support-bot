@@ -75,13 +75,24 @@ class handler(BaseHTTPRequestHandler):           # noqa: N801 - Vercel's name
         self.wfile.write(payload)
 
     def do_GET(self):                            # noqa: N802 - stdlib name
-        """A browser hitting the URL, or a health check."""
+        """A browser hitting the URL, or a health check.
+
+        Reports what this instance actually resolved, not what the repo says.
+        Environment changes only reach a new deployment, so being able to read
+        back the live gateway list and emoji count is what turns "I changed
+        the variable" into something checkable.
+        """
         _boot()
+        from app import payments                 # noqa: PLC0415 - diagnostic
         self._reply(200, json.dumps({
             "ok": True,
             "store": store.store_name(),
             "storage": store.backend.kind,
             "products": store.products.count(),
+            "gateways": [m.key for m in payments.available()],
+            "emoji": len(emo.PREMIUM),
+            "force_join": len(config.FORCE_JOIN_CHATS) if config.FORCE_JOIN
+                          else 0,
         }))
 
     def do_POST(self):                           # noqa: N802 - stdlib name
