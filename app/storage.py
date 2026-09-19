@@ -141,7 +141,17 @@ class PostgresBackend:
         # A new connection per operation. Serverless invocations are short and
         # a pooler (Neon/Supabase pgbouncer) is the right place to keep these
         # warm — holding one open here would leak across cold starts.
-        return self._psycopg.connect(self.dsn, autocommit=False)
+        #
+        # connect_timeout is not optional. Without it a host that cannot reach
+        # the database blocks forever, and on a webhook that means Telegram
+        # times out and redelivers the same update. Seen in practice on a
+        # machine whose IPv6 was black-holed: DNS returned AAAA records first
+        # and every connection sat for ~47s before falling back to IPv4.
+        return self._psycopg.connect(
+            self.dsn,
+            autocommit=False,
+            connect_timeout=config.DB_CONNECT_TIMEOUT,
+        )
 
     def ensure(self):
         if self._ready:

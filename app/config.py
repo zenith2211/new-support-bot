@@ -68,6 +68,10 @@ DATA_DIR = os.environ.get("DATA_DIR") or os.path.join(BASE_DIR, "data")
 # opened per operation, which a pooler is built for and a direct server is not.
 DATABASE_URL = (os.environ.get("DATABASE_URL")
                 or os.environ.get("POSTGRES_URL") or "").strip()
+# Seconds to wait for a database connection before giving up. Bounded on
+# purpose: an unbounded connect on a webhook means Telegram times out and
+# redelivers the same update.
+DB_CONNECT_TIMEOUT = int(os.environ.get("DB_CONNECT_TIMEOUT") or 10)
 
 
 def _env(name: str, default: str = "") -> str:
