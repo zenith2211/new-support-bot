@@ -47,8 +47,13 @@ def _expire_topups() -> int:
 async def _run() -> dict:
     try:
         store.init()
-        state.sweep()
-        return {"ok": True, "expired_topups": _expire_topups()}
+        swept = state.sweep()
+        return {
+            "ok": True,
+            "expired_topups": _expire_topups(),
+            "swept_prompts": swept.get("prompts", 0),
+            "swept_coupons": swept.get("coupons", 0),
+        }
     finally:
         await tg.close_session()
 

@@ -114,7 +114,11 @@ class Table:
 # Every table, in one place, so the migration tool and any future backend
 # cannot drift from what the bot actually uses.
 TABLE_NAMES = ("users", "categories", "products", "stock", "orders",
-               "coupons", "giftcodes", "topups", "settings")
+               "coupons", "giftcodes", "topups", "settings",
+               # Conversation state. Persisted because on serverless the
+               # invocation that opens a prompt is never the one that reads
+               # the reply — see app/state.py.
+               "prompts", "coupon_picks")
 
 users = Table("users")
 categories = Table("categories")
@@ -125,6 +129,9 @@ coupons = Table("coupons")
 giftcodes = Table("giftcodes")
 topups = Table("topups")
 settings = Table("settings")
+# Conversation state, owned by app/state.py.
+prompts = Table("prompts")
+coupon_picks = Table("coupon_picks")
 
 
 # ─── SETTINGS (runtime-editable, falls back to env config) ────

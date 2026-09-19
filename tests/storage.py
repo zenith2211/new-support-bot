@@ -111,6 +111,72 @@ def concurrency(backend, label: str):
     backend.replace_all(table, {})
 
 
+def conversation_state_survives_a_process():
+    """The admin panel is prompt-driven: tap "Add stock", then send the lines
+    as a separate message. On serverless those two arrive at two different
+    processes, so a prompt held in module memory is gone by the time the
+    reply lands and the action silently does nothing.
+
+    Simulated by dropping the table caches between the two steps, which is
+    what a fresh invocation gets.
+    """
+    from app import config, state, store
+
+    user = 4242424242
+    state.clear_prompt(user)
+
+    # Invocation A: admin taps "Add stock".
+    state.set_prompt(user, "ad_stock_add", pid="pspot1")
+
+    # Invocation B: a genuinely separate process. Reloading a table cache
+    # here would prove nothing — it would not have cleared the module-level
+    # dict the old implementation used, so the old code would pass too.
+    import json as _json
+    import subprocess
+    import sys as _sys
+
+    probe = (
+        "from app import state;"
+        f"r = state.get_prompt({user});"
+        "import json;"
+        "print('PROBE' + json.dumps(r))"
+    )
+    env = dict(os.environ)
+    env["DATA_DIR"] = config.DATA_DIR
+    env["PYTHONIOENCODING"] = "utf-8"
+    out = subprocess.run([_sys.executable, "-c", probe], capture_output=True,
+                         text=True, env=env, timeout=120).stdout
+    line = next((l for l in out.splitlines() if l.startswith("PROBE")), "")
+    record = _json.loads(line[5:]) if line else None
+
+    ok("prompt survives a separate process", record is not None,
+       "the admin form would silently do nothing on serverless")
+    if record:
+        check("prompt keeps its mode", record.get("mode"), "ad_stock_add")
+        check("prompt keeps its data", (record.get("data") or {}).get("pid"),
+              "pspot1")
+
+    state.clear_prompt(user)
+    store.prompts.reload()
+    ok("clear_prompt really clears", state.get_prompt(user) is None)
+
+    # Same for a picked coupon, which is read on a later message too.
+    state.set_coupon(user, "pspot1", "SAVE10")
+    state.set_coupon(user, "pgemin1", "HALF")
+    store.coupon_picks.reload()
+    check("coupon survives a new process",
+          state.get_coupon(user, "pspot1"), "SAVE10")
+    check("a second product keeps its own coupon",
+          state.get_coupon(user, "pgemin1"), "HALF")
+
+    state.clear_coupon(user, "pspot1")
+    store.coupon_picks.reload()
+    check("clearing one coupon leaves the other",
+          state.get_coupon(user, "pgemin1"), "HALF")
+    check("cleared coupon is gone", state.get_coupon(user, "pspot1"), "")
+    state.clear_coupon(user, "pgemin1")
+
+
 def destructive_suites_are_isolated():
     """smoke and flow buy, credit, ban and delete. Both must pin themselves to
     the JSON backend, because their DATA_DIR guard is meaningless once
@@ -152,6 +218,7 @@ def main() -> int:
     exercise(json_backend, "json")
     concurrency(json_backend, "json")
     table_registry()
+    conversation_state_survives_a_process()
     destructive_suites_are_isolated()
     print("  [     ok] json backend" if not FAILURES
           else f"  [FAIL x{len(FAILURES)}] json backend")
