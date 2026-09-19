@@ -21,6 +21,13 @@ os.environ.setdefault("STORE_NAME", "ToolBox Store Bot")
 os.environ.setdefault("SUPPORT_USERNAME", "your_support")
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="storebot-smoke-"))
 
+# Force the JSON backend onto the temp DATA_DIR above. With DATABASE_URL set,
+# store.py ignores DATA_DIR entirely and the guard below would wave this suite
+# straight through to the live database. Empty rather than deleted, so
+# config.load_env_file() does not put it back from .env.
+os.environ["DATABASE_URL"] = ""
+os.environ["POSTGRES_URL"] = ""
+
 # This suite buys products, credits wallets and creates codes. Pointed at a
 # real DATA_DIR it would corrupt live users, orders and stock — so refuse
 # unless the directory is obviously a throwaway.

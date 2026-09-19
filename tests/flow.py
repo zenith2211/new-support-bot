@@ -27,6 +27,17 @@ os.environ.setdefault("MANUAL_PAY", "1")
 os.environ.setdefault("MANUAL_PAY_LABEL", "Pay manually")
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="storebot-flow-"))
 
+# Force the JSON backend onto the temp DATA_DIR above.
+#
+# Without this the DATA_DIR guard below is decoration: once DATABASE_URL is
+# set, store.py talks to Postgres and DATA_DIR is never touched, so a suite
+# that buys, credits, bans and deletes would do all of that to the live
+# database. Setting the keys empty (rather than deleting them) also stops
+# config.load_env_file() reading them back out of .env, because it only fills
+# in names that are absent from the environment.
+os.environ["DATABASE_URL"] = ""
+os.environ["POSTGRES_URL"] = ""
+
 # Same guard as tests/smoke.py: this suite buys, credits, bans and deletes.
 _DATA_DIR = os.environ["DATA_DIR"]
 if "storebot-flow-" not in _DATA_DIR and not os.environ.get("ALLOW_LIVE_DATA"):

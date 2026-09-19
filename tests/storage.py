@@ -108,6 +108,25 @@ def concurrency(backend, label: str):
     backend.replace_all(table, {})
 
 
+def destructive_suites_are_isolated():
+    """smoke and flow buy, credit, ban and delete. Both must pin themselves to
+    the JSON backend, because their DATA_DIR guard is meaningless once
+    DATABASE_URL is set — store.py would quietly use Postgres instead."""
+    import pathlib
+    import re
+
+    for name in ("smoke", "flow"):
+        source = pathlib.Path(__file__).with_name(f"{name}.py").read_text(
+            encoding="utf-8")
+        head = source.split("from app import", 1)[0]
+        for var in ("DATABASE_URL", "POSTGRES_URL"):
+            pinned = re.search(
+                rf'os\.environ\["{var}"\]\s*=\s*""', head)
+            ok(f"tests/{name}.py pins {var} before importing app",
+               bool(pinned),
+               "a live database would be used for a destructive suite")
+
+
 def table_registry():
     """store.TABLE_NAMES drives the migration tool. If a new Table is added
     and not listed, that table silently fails to migrate — so pin it."""
@@ -130,6 +149,7 @@ def main() -> int:
     exercise(json_backend, "json")
     concurrency(json_backend, "json")
     table_registry()
+    destructive_suites_are_isolated()
     print("  [     ok] json backend" if not FAILURES
           else f"  [FAIL x{len(FAILURES)}] json backend")
 
