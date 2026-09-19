@@ -1,23 +1,30 @@
 """
-app/store.py — JSON persistence.
+app/store.py — persistence and domain logic.
 
-One file per collection under DATA_DIR, each cached in memory and written
-atomically (tmp file + os.replace) so a crash mid-write cannot corrupt the
-catalog. Good for a single-process store bot; swap this module for a real
-database if you ever run more than one worker.
+Records live wherever app/storage.py puts them: JSON files under DATA_DIR by
+default, or Postgres when DATABASE_URL is set. Reads are served from an
+in-memory cache; writes go straight through to the backend.
+
+That cache is why money never goes through a plain read-modify-write here.
+With one process the RLock below makes `balance = balance + x` safe. With
+several — any serverless host — it does not, because each has its own cache
+and its own lock. So every balance and stock change goes through
+`_mutate()`, which on Postgres holds a row lock for the whole read-modify-
+write. See app/storage.py for the mechanics.
 """
 
-import json
 import logging
 import os
 import random
 import threading
 
-from . import config, util
+from . import config, storage, util
 
 logger = logging.getLogger(__name__)
 
 _lock = threading.RLock()
+
+backend = storage.build()
 
 
 def _path(name: str) -> str:
@@ -25,44 +32,32 @@ def _path(name: str) -> str:
 
 
 def ensure_data_dir():
-    os.makedirs(config.DATA_DIR, exist_ok=True)
+    backend.ensure()
 
 
 class Table:
-    """A dict-of-records persisted as one JSON object."""
+    """A dict of records, cached in memory and written through to `backend`."""
 
     def __init__(self, name: str):
         self.name = name
         self._cache: dict | None = None
 
     # ── io ────────────────────────────────────────────────────
-    def _read(self) -> dict:
-        path = _path(self.name)
-        if not os.path.exists(path):
-            return {}
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-            return data if isinstance(data, dict) else {}
-        except (OSError, ValueError) as exc:
-            logger.error("%s.json unreadable (%s) — starting empty",
-                         self.name, exc)
-            return {}
-
     def all(self) -> dict:
         with _lock:
             if self._cache is None:
-                self._cache = self._read()
+                self._cache = backend.load(self.name)
             return self._cache
 
     def save(self):
+        """Write the whole table.
+
+        Kept for the callers that mutate a record in place and then save. On
+        Postgres this is a per-record rewrite of everything, so prefer put()
+        or mutate() for anything hot.
+        """
         with _lock:
-            ensure_data_dir()
-            path = _path(self.name)
-            tmp = f"{path}.tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(self.all(), fh, ensure_ascii=False, indent=2)
-            os.replace(tmp, path)
+            backend.replace_all(self.name, self.all())
 
     def reload(self):
         with _lock:
@@ -72,11 +67,11 @@ class Table:
     def get(self, key) -> dict | None:
         return self.all().get(str(key))
 
-    def put(self, key, record: dict, save: bool = True) -> dict:
+    def put(self, key, record, save: bool = True) -> dict:
         with _lock:
             self.all()[str(key)] = record
             if save:
-                self.save()
+                backend.put(self.name, str(key), record, self.all())
         return record
 
     def patch(self, key, **fields) -> dict | None:
@@ -85,15 +80,29 @@ class Table:
             if record is None:
                 return None
             record.update(fields)
-            self.save()
+            backend.put(self.name, str(key), record, self.all())
             return record
 
     def delete(self, key, save: bool = True) -> bool:
         with _lock:
             existed = self.all().pop(str(key), None) is not None
             if existed and save:
-                self.save()
+                backend.delete(self.name, str(key), self.all())
             return existed
+
+    def mutate(self, key, fn):
+        """Read-modify-write one record safely, even with several writers.
+
+        `fn(record)` returns the new record, or None to change nothing. On
+        Postgres the read and the write share one transaction and a row lock,
+        so a second writer waits rather than overwriting. Use this and not
+        get()/save() for anything that adds to a number.
+        """
+        with _lock:
+            result = backend.mutate(self.name, str(key), fn, self.all())
+            if result is not None:
+                self.all()[str(key)] = result
+            return result
 
     def values(self) -> list:
         return list(self.all().values())
@@ -101,6 +110,11 @@ class Table:
     def count(self) -> int:
         return len(self.all())
 
+
+# Every table, in one place, so the migration tool and any future backend
+# cannot drift from what the bot actually uses.
+TABLE_NAMES = ("users", "categories", "products", "stock", "orders",
+               "coupons", "giftcodes", "topups", "settings")
 
 users = Table("users")
 categories = Table("categories")
@@ -302,36 +316,49 @@ def balance_of(user_id) -> float:
 
 
 def credit(user_id, amount: float, kind: str = "topup") -> float:
-    """Add to a wallet. Returns the new balance."""
-    with _lock:
-        record = users.get(user_id)
+    """Add to a wallet. Returns the new balance.
+
+    Goes through mutate() rather than get()/save(): two deposits landing at
+    once must not both read the old balance and write back their own total.
+    """
+    def apply(record):
         if record is None:
-            return 0.0
-        new_balance = round(float(record.get("balance") or 0.0) + float(amount), 6)
-        record["balance"] = new_balance
+            return None
+        record = dict(record)
+        record["balance"] = round(
+            float(record.get("balance") or 0.0) + float(amount), 6)
         if kind == "topup":
             record["topped_up"] = round(
-                float(record.get("topped_up") or 0.0) + float(amount), 6
-            )
-        users.save()
-        return new_balance
+                float(record.get("topped_up") or 0.0) + float(amount), 6)
+        return record
+
+    result = users.mutate(user_id, apply)
+    if result is None:
+        return 0.0
+    return float(result.get("balance") or 0.0)
 
 
 def debit(user_id, amount: float) -> bool:
-    """Spend from a wallet. False (and no change) when funds are short."""
-    with _lock:
-        record = users.get(user_id)
+    """Spend from a wallet. False (and no change) when funds are short.
+
+    The funds check and the deduction share one transaction, so a wallet
+    cannot be spent twice by two requests that both saw enough balance.
+    """
+    charge = float(amount)
+
+    def apply(record):
         if record is None:
-            return False
+            return None
         balance = float(record.get("balance") or 0.0)
-        amount = float(amount)
-        if balance + 1e-9 < amount:
-            return False
-        record["balance"] = round(balance - amount, 6)
-        record["spent"] = round(float(record.get("spent") or 0.0) + amount, 6)
+        if balance + 1e-9 < charge:
+            return None                 # rolls back, leaves the row untouched
+        record = dict(record)
+        record["balance"] = round(balance - charge, 6)
+        record["spent"] = round(float(record.get("spent") or 0.0) + charge, 6)
         record["orders"] = int(record.get("orders") or 0) + 1
-        users.save()
-        return True
+        return record
+
+    return users.mutate(user_id, apply) is not None
 
 
 def is_banned(user_id) -> tuple[bool, str]:
@@ -605,30 +632,48 @@ def stock_clear(pid: str):
 
 def stock_take(pid: str, qty: int) -> list | None:
     """Reserve `qty` units. Returns the delivered payload lines, or None when
-    stock is short — the check and the decrement happen under one lock so two
-    buyers cannot take the same line."""
-    with _lock:
-        product = product_get(pid)
-        if not product:
-            return None
-        mode = product.get("stock_mode", "lines")
+    stock is short.
 
-        if mode == "unlimited":
-            return [""] * qty
+    The check and the decrement share one transaction, so two buyers cannot
+    be handed the same account: whoever gets the row lock second sees the
+    already-shortened list.
+    """
+    product = product_get(pid)
+    if not product:
+        return None
+    mode = product.get("stock_mode", "lines")
 
-        if mode == "manual":
-            have = stock_count(pid)
+    if mode == "unlimited":
+        return [""] * qty
+
+    if mode == "manual":
+        # The counter lives on the product record, so lock that instead.
+        def take_counter(record):
+            if record is None:
+                return None
+            have = int(record.get("manual_stock") or 0)
             if have < qty:
                 return None
-            product_save(pid, manual_stock=have - qty)
-            return [""] * qty
+            record = dict(record)
+            record["manual_stock"] = have - qty
+            return record
 
-        lines = list(stock_lines(pid))
-        if len(lines) < qty:
+        if products.mutate(pid, take_counter) is None:
             return None
-        taken, rest = lines[:qty], lines[qty:]
-        stock.put(pid, rest)
-        return taken
+        return [""] * qty
+
+    taken: list = []
+
+    def take_lines(lines):
+        available = list(lines or [])
+        if len(available) < qty:
+            return None
+        taken.extend(available[:qty])
+        return available[qty:]
+
+    if stock.mutate(pid, take_lines) is None:
+        return None
+    return taken
 
 
 def stock_return(pid: str, lines: list):

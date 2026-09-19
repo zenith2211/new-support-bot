@@ -1,1 +1,5 @@
 aiohttp>=3.9,<4
+
+# Only needed when DATABASE_URL is set. Without it the bot falls back to JSON
+# files under DATA_DIR and never imports this.
+psycopg[binary]>=3.1,<4

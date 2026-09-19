@@ -61,6 +61,14 @@ ENV_FILE_PATH = os.environ.get("ENV_FILE") or os.path.join(BASE_DIR, ".env")
 
 DATA_DIR = os.environ.get("DATA_DIR") or os.path.join(BASE_DIR, "data")
 
+# Postgres connection string. Set it and records live in the database instead
+# of DATA_DIR — required on any host with an ephemeral disk, and the only
+# option when more than one process writes (i.e. anything serverless).
+# Use the POOLED connection string on Neon/Supabase: a new connection is
+# opened per operation, which a pooler is built for and a direct server is not.
+DATABASE_URL = (os.environ.get("DATABASE_URL")
+                or os.environ.get("POSTGRES_URL") or "").strip()
+
 
 def _env(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()

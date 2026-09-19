@@ -160,6 +160,52 @@ payload; manual ones show their counter.
 sellable credential you hold, in plain text. `tests/flow.py` asserts a
 non-admin gets no document.
 
+## Storage
+
+Records live in one of two places, decided by `DATABASE_URL`:
+
+| | `DATABASE_URL` unset | `DATABASE_URL` set |
+|---|---|---|
+| Where | JSON files under `DATA_DIR` | Postgres, one row per record |
+| Survives a redeploy | only with a persistent disk | yes |
+| Safe with >1 writer | **no** | yes |
+| Setup | none | a connection string |
+
+JSON is right for local development. Postgres is required on any host with an
+ephemeral disk, and mandatory for serverless, where every request is a separate
+process.
+
+Move existing data across with:
+
+```bash
+python -m tools.migrate_to_postgres          # dry run
+python -m tools.migrate_to_postgres --write
+```
+
+It refuses to overwrite non-empty tables without `--force`, so running it
+twice cannot roll live balances back to whatever the local files say.
+
+### Why `mutate()` exists
+
+`credit()`, `debit()` and `stock_take()` are read-modify-write. With one
+process the `RLock` in `store.py` makes them safe. With several it does not —
+each has its own cache and its own lock, so two deposits can both read the old
+balance and the second overwrites the first.
+
+So those three go through `Table.mutate()`, which on Postgres runs the read and
+the write in one transaction behind `SELECT ... FOR UPDATE`. Concurrent credits
+queue instead of clobbering each other, and `debit()` cannot let the same
+balance be spent twice.
+
+**Use `mutate()`, not `get()` then `save()`, for anything that adds to a
+number.** `tests/storage.py` has a check that fires 40 concurrent credits at
+one wallet and asserts none are lost — it is the check worth running against a
+real database before trusting a deploy:
+
+```bash
+DATABASE_URL=postgres://... python -m tests.storage
+```
+
 ## Force join
 
 Set `FORCE_JOIN=1` and list the chats in `FORCE_JOIN_CHATS`, one `id|link|name`
@@ -399,6 +445,7 @@ No network, no token needed:
 python -m tests.smoke   # renders every screen in every language
 python -m tests.flow    # drives updates through the router with a faked API
 python -m tests.gateway # gateway signing, statuses and failure handling
+python -m tests.storage # both storage backends + the lost-update check
 ```
 
 Both suites refuse to run against a real `DATA_DIR` — they buy products,
