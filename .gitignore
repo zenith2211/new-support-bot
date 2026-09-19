@@ -22,3 +22,5 @@ data/*
 # Local run logs
 bot-run.log
 *.log
+.neon
+node_modules/
