@@ -91,8 +91,17 @@ class handler(BaseHTTPRequestHandler):           # noqa: N801 - Vercel's name
             "products": store.products.count(),
             "gateways": [m.key for m in payments.available()],
             "emoji": len(emo.PREMIUM),
-            "force_join": len(config.FORCE_JOIN_CHATS) if config.FORCE_JOIN
-                          else 0,
+            # Exactly what _gated() checks. Reporting the env var alone once
+            # hid a wide-open shop behind a healthy-looking "force_join": 1 —
+            # and FORCE_JOIN is only the default for the stored setting, so
+            # it says nothing at all once that row exists.
+            "force_join": {
+                "enabled": bool(store.setting("force_join")),
+                "env_default": bool(config.FORCE_JOIN),
+                "chats": [c["id"] for c in config.FORCE_JOIN_CHATS],
+                "gating": bool(store.setting("force_join"))
+                          and bool(config.FORCE_JOIN_CHATS),
+            },
         }))
 
     def do_POST(self):                           # noqa: N802 - stdlib name

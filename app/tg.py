@@ -414,22 +414,48 @@ async def bot_link() -> str:
     return f"https://t.me/{username}" if username else ""
 
 
-async def is_member(chat_id: int, user_id) -> bool:
-    """True when the user is in the channel (or the check cannot be made).
+# getChatMember does not answer "no" with a status — it answers with an
+# error, and the error means two very different things:
+#
+#   * the CHAT is unusable (bot not an admin, wrong id) -> our mistake, and
+#     locking the whole shop over it would be worse than letting people in.
+#   * the USER is unknown to that chat -> Telegram has no participant row for
+#     them, which is precisely what a non-member looks like.
+#
+# Treating the second as "cannot check" waves every brand-new customer
+# through, which makes force join do nothing at all. Only users who have some
+# history with the chat come back as a clean "left".
+_NOT_A_MEMBER_ERRORS = (
+    "participant_id_invalid",
+    "user_not_participant",
+    "user not found",
+)
 
-    Fails open on purpose: a config mistake must never lock the shop. Note the
-    most common mistake is the bot not being an admin in the chat, which makes
-    every check fail and so waves everyone through — hence the warning.
+_MEMBER_STATUSES = ("creator", "administrator", "member", "restricted")
+
+
+async def is_member(chat_id: int, user_id) -> bool:
+    """True when the user is in the chat, or when the chat cannot be checked.
+
+    Fails open for a broken chat, closed for an unknown user — see
+    _NOT_A_MEMBER_ERRORS for why those two cases must not be conflated.
     """
     if not chat_id:
         return True
     data = await api("getChatMember", {"chat_id": chat_id, "user_id": user_id})
-    if not data.get("ok"):
-        logger.warning("membership check failed for chat %s: %s — is the bot "
-                       "an admin there?", chat_id, data.get("description"))
-        return True  # never lock users out because of a config mistake
-    status = data.get("result", {}).get("status", "")
-    return status in ("creator", "administrator", "member", "restricted")
+    if data.get("ok"):
+        return data.get("result", {}).get("status", "") in _MEMBER_STATUSES
+
+    description = (data.get("description") or "").lower()
+    if any(marker in description for marker in _NOT_A_MEMBER_ERRORS):
+        # Not an error about our setup: Telegram simply has no record of this
+        # user in this chat. That is a non-member.
+        return False
+
+    logger.warning("membership check failed for chat %s: %s — is the bot an "
+                   "admin there? letting the user through", chat_id,
+                   data.get("description"))
+    return True  # never lock the shop over a config mistake
 
 
 async def missing_chats(chats: list, user_id) -> list:

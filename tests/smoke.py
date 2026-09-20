@@ -54,6 +54,55 @@ def fail(where: str, detail: str):
     FAILURES.append(f"{where}: {detail}")
 
 
+def _check_membership_errors():
+    """tg.is_member must fail CLOSED on a user error, OPEN on a chat error.
+
+    Telegram has no "not a member" status for someone it has never seen in
+    the chat — it returns Bad Request instead. Reading every Bad Request as
+    "cannot check, let them in" silently disables force join for exactly the
+    people it is meant to stop: first-time customers.
+    """
+    from app import tg
+
+    cases = [
+        # (description from Telegram, expected is_member, why)
+        ("Bad Request: PARTICIPANT_ID_INVALID", False, "unknown user"),
+        ("Bad Request: USER_NOT_PARTICIPANT", False, "explicit non-member"),
+        ("Bad Request: user not found", False, "no such user"),
+        ("Bad Request: chat not found", True, "our config is wrong"),
+        ("Bad Request: CHAT_ADMIN_REQUIRED", True, "bot is not an admin"),
+        ("Forbidden: bot is not a member of the channel chat", True,
+         "bot was removed"),
+    ]
+
+    original = tg.api
+    try:
+        for description, expected, why in cases:
+            async def stub(_method, _params=None, _desc=description):
+                return {"ok": False, "description": _desc}
+
+            tg.api = stub
+            got = _run(tg.is_member(-100123, 999))
+            if got != expected:
+                fail("force_join",
+                     f"{description!r} ({why}) -> is_member={got}, "
+                     f"want {expected}")
+
+        # A clean answer still decides on status alone.
+        for status, expected in (("member", True), ("creator", True),
+                                 ("left", False), ("kicked", False)):
+            async def stub(_method, _params=None, _status=status):
+                return {"ok": True, "result": {"status": _status}}
+
+            tg.api = stub
+            got = _run(tg.is_member(-100123, 999))
+            if got != expected:
+                fail("force_join",
+                     f"status {status!r} -> is_member={got}, want {expected}")
+    finally:
+        tg.api = original
+
+
 def check_view(name: str, view, show: bool = False):
     global CHECKED
     CHECKED += 1
@@ -305,6 +354,13 @@ def main() -> int:
         fail("util", f"parse_amount('$1,50') = {util.parse_amount('$1,50')}")
     if t("missing_key_xyz", "en") != "missing_key_xyz":
         fail("lang", "unknown keys should echo back")
+
+    # ── force join actually gates ─────────────────────────────
+    # getChatMember says "no" by erroring, and an error about the USER is not
+    # an error about the CHAT. Conflating them let every new customer into
+    # the shop without joining anything, because Telegram has no participant
+    # row for someone who has never been in the chat.
+    _check_membership_errors()
 
     # ── report ────────────────────────────────────────────────
     print(f"\n{'=' * 68}")
