@@ -11,6 +11,7 @@ import logging
 
 from .. import broadcast, commands, config, screens, state, store, tg, util
 from ..lang import t
+from ..msg import Msg
 from .base import Ctx, ctx_from_callback, ctx_from_message, error, send_new, \
     toast
 from . import account, admin, pay_flow, shop_flow
@@ -86,10 +87,49 @@ async def _gated(ctx: Ctx) -> bool:
     return True
 
 
+async def _group_id_reply(message: dict, chat: dict):
+    """Answer /id in a group, for admins only.
+
+    Admin-only because the reply is a config snippet: in a group full of
+    customers it would be noise, and it names the chat the shop gates on.
+    """
+    text = (message.get("text") or "").strip()
+    command = text.split()[0].split("@")[0].lower() if text else ""
+    if command not in ("/id", "/myid"):
+        return
+
+    user = message.get("from") or {}
+    if not config.is_admin(user.get("id")):
+        return
+
+    chat_id = chat.get("id")
+    title = chat.get("title") or "this chat"
+    already = any(str(entry.get("id")) == str(chat_id)
+                  for entry in config.FORCE_JOIN_CHATS)
+
+    m = Msg()
+    m.header("link", "Chat id")
+    m.emoji("category").space().bold("Chat: ").text(str(title)).nl()
+    m.emoji("sku").space().bold("Chat id: ").code(str(chat_id)).nl(2)
+    if already:
+        m.italic("Already in FORCE_JOIN_CHATS.")
+    else:
+        m.text("Append to FORCE_JOIN_CHATS:").nl()
+        m.code(f"{chat_id}|<invite link>|{title}")
+    text_out, entities = m.build()
+    await tg.send_message(chat_id, text_out, entities)
+
+
 # ─── MESSAGES ─────────────────────────────────────────────────
 async def on_message(message: dict):
     chat = message.get("chat") or {}
     if chat.get("type") != "private":
+        # The shop only runs in DMs, with one exception: /id answers in a
+        # group so an admin can read that group's numeric id. A private group
+        # has no username and no API turns an invite link into an id, so
+        # without this the only way to learn it is to add the bot and wait for
+        # the my_chat_member DM.
+        await _group_id_reply(message, chat)
         return
 
     tg_user = message.get("from") or {}
