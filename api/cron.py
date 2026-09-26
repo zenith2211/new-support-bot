@@ -47,6 +47,9 @@ def _expire_topups() -> int:
 async def _run() -> dict:
     try:
         store.init()
+        # A warm container's caches are from the previous run; sweeping off
+        # those would re-expire top-ups someone has since paid.
+        store.reload_all()
         swept = state.sweep()
         return {
             "ok": True,

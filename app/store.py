@@ -134,6 +134,28 @@ prompts = Table("prompts")
 coupon_picks = Table("coupon_picks")
 
 
+def all_tables() -> tuple:
+    return tuple(value for value in globals().values()
+                 if isinstance(value, Table))
+
+
+def reload_all():
+    """Drop every table cache.
+
+    Table._cache is filled on first read and never expires, which is right
+    for one long-lived process that owns its data. Serverless breaks that:
+    Vercel reuses a warm container across invocations, so a container that
+    read force_join=False keeps answering False after an admin toggles it
+    somewhere else — the write lands in Postgres and in the *writing*
+    container's cache, and nowhere else.
+
+    Webhook and cron entrypoints call this once per invocation. The caches
+    are lazy, so this costs nothing until something is actually read.
+    """
+    for table in all_tables():
+        table.reload()
+
+
 # ─── SETTINGS (runtime-editable, falls back to env config) ────
 _SETTING_DEFAULTS = {
     "store_name": lambda: config.STORE_NAME,

@@ -177,6 +177,46 @@ def conversation_state_survives_a_process():
     state.clear_coupon(user, "pgemin1")
 
 
+def warm_container_sees_other_writers():
+    """store.reload_all() must drop every table cache.
+
+    Table._cache never expires. In one long-lived process that is fine —
+    it owns its data. On Vercel a warm container is reused, so a container
+    that cached force_join=False kept answering False after an admin turned
+    it on from another container: the write reached Postgres and the writing
+    container, and nothing else. api/telegram.py calls reload_all() per
+    invocation; this pins that it actually clears things.
+    """
+    from app import store
+
+    store.settings.put("t_probe_setting", {"value": "first"})
+    check("setting reads back", store.setting("t_probe_setting"), "first")
+
+    # Another container writes straight to the backend, behind this
+    # process's cache — exactly what a second Lambda does.
+    whole = dict(store.settings.all())
+    whole["t_probe_setting"] = {"value": "second"}
+    store.backend.put("settings", "t_probe_setting", {"value": "second"},
+                      whole)
+
+    ok("a stale cache is genuinely stale",
+       store.setting("t_probe_setting") == "first",
+       "the cache did not hold, so this test proves nothing")
+
+    store.reload_all()
+
+    # Every table, not just the one that happened to be read.
+    still_cached = [t.name for t in store.all_tables()
+                    if t._cache is not None]
+    ok("reload_all clears every table", not still_cached,
+       f"still cached: {still_cached}")
+
+    check("reload_all picks up the other writer",
+          store.setting("t_probe_setting"), "second")
+
+    store.settings.delete("t_probe_setting")
+
+
 def destructive_suites_are_isolated():
     """smoke and flow buy, credit, ban and delete. Both must pin themselves to
     the JSON backend, because their DATA_DIR guard is meaningless once
@@ -219,6 +259,7 @@ def main() -> int:
     concurrency(json_backend, "json")
     table_registry()
     conversation_state_survives_a_process()
+    warm_container_sees_other_writers()
     destructive_suites_are_isolated()
     print("  [     ok] json backend" if not FAILURES
           else f"  [FAIL x{len(FAILURES)}] json backend")

@@ -48,12 +48,20 @@ _ready = False
 
 
 def _boot():
+    """Prepare this invocation.
+
+    The one-time half (schema, emoji) is guarded by _ready and survives in a
+    warm container. The cache reset is not: a warm container holds whatever
+    it read last time, so without this an admin toggling force_join or
+    adding a product is invisible here until the container recycles.
+    """
     global _ready
-    if _ready:
-        return
-    store.init()
-    emo.load_premium()
-    _ready = True
+    if not _ready:
+        store.init()
+        emo.load_premium()
+        _ready = True
+    else:
+        store.reload_all()
 
 
 async def _process(update: dict):
